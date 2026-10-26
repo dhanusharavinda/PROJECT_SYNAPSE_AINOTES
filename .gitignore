@@ -1,0 +1,8 @@
+node_modules/
+dist/
+vault/
+work/
+.env*
+*.log
+
+public/excalidraw/
