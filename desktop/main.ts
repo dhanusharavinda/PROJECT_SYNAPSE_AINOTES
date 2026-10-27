@@ -2,6 +2,7 @@ import {
   app as electronApp,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   nativeImage,
   session,
@@ -16,6 +17,7 @@ import crypto from "node:crypto";
 import type { Server } from "node:http";
 import { createApp } from "../server/app.js";
 import { seed } from "../server/seed.js";
+import { createUpdates } from "./updates.js";
 
 const { autoUpdater } = electronUpdater;
 if (process.env.SYNAPSE_DESKTOP_PROFILE)
@@ -27,7 +29,7 @@ let mainWindow: BrowserWindow | null = null;
 let httpServer: Server | null = null;
 let vaultLock: NetServer | null = null;
 let currentVault = "";
-let manualUpdateCheck = false;
+let updates: ReturnType<typeof createUpdates> | undefined;
 
 type DesktopConfig = { vaultPath?: string; port?: number };
 
@@ -156,6 +158,11 @@ function createWindow(url: string) {
     backgroundColor: "#f6f6f0",
     icon: icon.isEmpty() ? undefined : icon,
     webPreferences: {
+      preload: path.join(
+        electronApp.getAppPath(),
+        "desktop-dist",
+        "preload.cjs",
+      ),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -271,7 +278,6 @@ function installMenu() {
           {
             label: "Check for updates",
             click: () => {
-              manualUpdateCheck = true;
               if (!electronApp.isPackaged) {
                 void dialog.showMessageBox({
                   type: "info",
@@ -279,7 +285,7 @@ function installMenu() {
                 });
                 return;
               }
-              void autoUpdater.checkForUpdates().catch(() => {});
+              void updates?.check(true);
             },
           },
           {
@@ -296,44 +302,32 @@ function installMenu() {
 }
 
 function configureUpdates() {
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on("update-not-available", () => {
-    if (!manualUpdateCheck) return;
-    manualUpdateCheck = false;
-    void dialog.showMessageBox({
-      type: "info",
-      title: "Synapse is up to date",
-      message: "You already have the newest available version.",
-    });
+  updates = createUpdates(autoUpdater, electronApp.getVersion(), (state) => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send("synapse:update-state", state);
   });
-  autoUpdater.on("update-downloaded", (info) => {
-    manualUpdateCheck = false;
-    void dialog
-      .showMessageBox({
-        type: "info",
-        title: "Synapse update ready",
-        message: `Synapse ${info.version} is ready to install.`,
-        detail: "Your vault will stay in place. Restart Synapse to finish.",
-        buttons: ["Restart and update", "Later"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then((result) => {
-        if (result.response === 0) autoUpdater.quitAndInstall();
-      });
+  ipcMain.handle("synapse:updates", (event, action: string) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      throw new Error(
+        "Updates are available only in the main notebook window.",
+      );
+    if (action === "state") return updates!.state();
+    if (action === "check") return updates!.check(true);
+    if (action === "download") return updates!.download();
+    if (action === "install") {
+      // Let the IPC reply reach the renderer before the updater closes it.
+      if (updates!.state().stage !== "ready")
+        throw new Error("Download the update first.");
+      setTimeout(() => updates!.install(), 100);
+      return;
+    }
+    throw new Error("Unknown update action.");
   });
-  autoUpdater.on("error", (error) => {
-    if (!manualUpdateCheck) return;
-    manualUpdateCheck = false;
-    void dialog.showMessageBox({
-      type: "error",
-      title: "Update check failed",
-      message: "Synapse could not check for an update.",
-      detail: error.message,
-    });
-  });
-  setTimeout(() => void autoUpdater.checkForUpdates().catch(() => {}), 5000);
+  setTimeout(() => void updates?.check(), 5000);
+  setInterval(() => void updates?.check(), 6 * 60 * 60 * 1000).unref();
 }
 
 async function runSmokeCheck(url: string, target: string) {

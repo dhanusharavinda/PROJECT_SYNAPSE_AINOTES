@@ -4,7 +4,9 @@
 
 Synapse is installed once. Your notes are not stored inside the app. They are stored in a vault folder that you choose, normally `Documents\Synapse`.
 
-When a new version is published, Synapse checks GitHub Releases, downloads it, and asks you to restart. You do not need to send every user a new installer manually. Sending the release link is still useful for people who have not installed Synapse yet.
+When a new version is published, Synapse checks GitHub Releases shortly after opening and every six hours while running. A bar says that an update is available. Choose **Download update**, follow its progress, then choose **Restart and update**. Your current note is saved first. If saving fails, the app stays open with your draft. **Later** dismisses the message for this session; exiting the app does not install it automatically. You do not need to send every user a new installer manually.
+
+Version 1.0 and 1.1 have the earlier updater: choose **Help > Check for updates**. The update downloads in the background, then a **Restart and update** prompt appears. The download bar is included in 1.1.1 and later. A first-time user can download the installer from the latest GitHub Release.
 
 ## First launch
 
@@ -32,8 +34,9 @@ Uninstalling Synapse also leaves the vault in place. The installer is configured
 1. Change the version in `package.json`, for example from `1.0.0` to `1.0.1`.
 2. Commit and push the tested change.
 3. Build with `npm run desktop:installer`.
-4. Create the matching GitHub Release, for example `v1.0.1`, and attach `Synapse-Setup-1.0.1.exe`, its block map, and `latest.yml` from `release\`.
-5. Installed apps discover the release automatically. A user can also choose **Help > Check for updates**.
+4. Write release notes in `docs/releases/VERSION.md`, commit them with the source, and push to main.
+5. Run `npm run desktop:publish`. It checks the installer checksum and version, requires a clean pushed commit, uploads the installer, block map, and manifest to a draft release, verifies asset sizes and the target commit, then publishes it. Existing published versions cannot be overwritten.
+6. Installed apps discover the release automatically. A user can also choose **Help > Check for updates**. Build the installer again after changing application source; the publishing command does not build it for you.
 
 For automatic release creation, copy `docs/desktop-release-workflow.example.yml` to `.github/workflows/desktop-release.yml`. Pushing workflow files requires a GitHub login with the `workflow` permission. The current repository login can push code but does not have that permission, so the template is deliberately inactive.
 
@@ -41,7 +44,7 @@ The app downloads public releases without an API key. GitHub Actions uses its re
 
 ## Windows code signing
 
-Auto-update support is implemented, but public distribution should use a Windows code-signing certificate. Signing proves that updates come from the same publisher and reduces Windows SmartScreen warnings.
+The current build is unsigned. A Windows code-signing certificate establishes publisher identity and reduces Windows SmartScreen warnings. Update downloads are checked against the checksum in the release manifest. Never put GitHub credentials into a distributed app.
 
 Add these encrypted GitHub repository secrets before a public release:
 

@@ -31,6 +31,7 @@ import { Inbox, Review, Audio } from "./StudyViews";
 import Settings from "./Settings";
 import Shared from "./Shared";
 import BrandMark from "./BrandMark";
+import DesktopUpdates from "./DesktopUpdates";
 type View = "notes" | "graph" | "inbox" | "review" | "audio" | "settings";
 export default function App() {
   const [data, setData] = useState<Bootstrap>();
@@ -104,6 +105,7 @@ export default function App() {
     return () => window.removeEventListener("resize", resize);
   }, []);
   const dirty = useRef(false);
+  const saveCurrent = useRef<(() => Promise<void>) | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const shared = window.location.pathname.match(
@@ -438,6 +440,13 @@ export default function App() {
         </div>
       </aside>
       <main className={"main-area " + (!sidebar ? "with-nav-handle" : "")}>
+        <DesktopUpdates
+          beforeRestart={async () => {
+            await saveCurrent.current?.();
+            if (dirty.current)
+              throw new Error("Save or recover your draft before restarting.");
+          }}
+        />
         {!sidebar && (
           <div className="compact-nav">
             <button
@@ -471,6 +480,9 @@ export default function App() {
               onNew={openCreate}
               notify={notify}
               onDirty={(d) => (dirty.current = d)}
+              onSaveReady={(save) => {
+                saveCurrent.current = save;
+              }}
             />
           ) : (
             <Empty

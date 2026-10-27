@@ -36,6 +36,7 @@ export default function NoteView({
   onNew,
   notify,
   onDirty,
+  onSaveReady,
 }: {
   note: Note;
   data: Bootstrap;
@@ -45,6 +46,7 @@ export default function NoteView({
   onNew: (parentId?: string, onCreated?: (n: Note) => Promise<void>) => void;
   notify: (s: string) => void;
   onDirty: (d: boolean) => void;
+  onSaveReady?: (save: (() => Promise<void>) | null) => void;
 }) {
   const initial = { ...note, body: bodyOf(note) };
   const [draft, setDraft] = useState<Note>(initial);
@@ -176,6 +178,10 @@ export default function NoteView({
     return () => clearTimeout(timer);
   }, [draft]);
   useEffect(() => {
+    onSaveReady?.(async () => {
+      await uploadTail.current;
+      await save();
+    });
     const before = (e: BeforeUnloadEvent) => {
       if (dirty.current) e.preventDefault();
     };
@@ -188,6 +194,7 @@ export default function NoteView({
     window.addEventListener("beforeunload", before);
     window.addEventListener("keydown", key);
     return () => {
+      onSaveReady?.(null);
       window.removeEventListener("beforeunload", before);
       window.removeEventListener("keydown", key);
     };

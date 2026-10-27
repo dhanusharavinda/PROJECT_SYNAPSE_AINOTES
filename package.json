@@ -4,7 +4,7 @@
   "description": "A local-first study notebook with an intentional knowledge graph.",
   "author": "Dhanusha Ravinda",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "main": "desktop-dist/main.mjs",
   "scripts": {
@@ -13,8 +13,9 @@
     "start": "tsx server/index.ts --production",
     "test": "vitest run",
     "check": "tsc --noEmit",
-    "desktop:compile": "esbuild desktop/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:electron --external:electron-updater --outfile=desktop-dist/main.mjs",
+    "desktop:compile": "esbuild desktop/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:electron --external:electron-updater --outfile=desktop-dist/main.mjs && esbuild desktop/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=desktop-dist/preload.cjs",
     "desktop:stage": "node scripts/stage-desktop.mjs",
+    "desktop:publish": "node scripts/publish-desktop.mjs",
     "desktop:unpacked": "npm run build && npm run desktop:compile && npm run desktop:stage && electron-builder --win nsis --dir",
     "desktop:installer": "npm run build && npm run desktop:compile && npm run desktop:stage && electron-builder --win nsis",
     "postinstall": "node scripts/prepare-assets.mjs"

@@ -1,5 +1,13 @@
 # Build review
 
+## Update delivery, version 1.1.1
+
+The desktop now checks for updates shortly after opening and every six hours while running. A quiet in-app bar offers Download update, progress, and Restart and update. The current note and pending uploads are saved before restart; failed saves leave the draft open. Downloads require a click, and closing the app does not silently install a downloaded update. Help > Check for updates uses the same interface. Background connection failures stay quiet, and manual checks show a useful retry message.
+
+Strict TypeScript, 97 tests, production assets, desktop preload compilation, and Windows packaging pass. Update tests cover duplicate checks, explicit download, progress, ready-only installation, download failure recovery, save-before-restart, save failure, dismissal, and absence from the web companion. Packaged IPC was checked with an isolated profile and vault. Responsive production UI fixtures cover available, downloading, and ready states in Light, Dark, and Paper without horizontal overflow or JavaScript errors. Public update discovery and download receipts are recorded in the dated handoff after publication. Actual replacement of the user's installed app requires the user's Restart and update click and was not forced during QA.
+
+The release command validates the version and installer checksum, requires a clean pushed commit, uploads all three updater assets to a draft release, verifies their sizes and target, and then publishes. Windows signing remains unconfigured. The previous review entries below describe their respective builds and publication state at those times.
+
 ## Notebook sheet, version 1.1.0
 
 Verified on 27 October 2026. The notebook now supports drawing directly on the page, freely placed text, tables, arrows, shapes, images, and flowcharts. Objects can be resized, moved, overlapped, duplicated, reordered, deleted, and restored through canvas undo/redo. Normal prose retains its text undo history. Older inline content can be moved into placed objects. Paper joins Light and Dark, with glass navigation, optional handwritten typography, configurable shortcuts, and a full-width writing area when side panels close. See [Notebook sheet](NOTEBOOK_SHEET.md).
