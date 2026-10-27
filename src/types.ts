@@ -1,5 +1,23 @@
 export type Layer = "intuition" | "technical" | "implementation";
 export type Relation = "related" | "prerequisite" | "used-in" | "contrasts";
+export interface CanvasItem {
+  id: string;
+  kind: "text" | "table" | "image" | "drawing" | "pen" | "arrow" | "rectangle";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text?: string;
+  src?: string;
+  drawingId?: string;
+  color?: string;
+  points?: [number, number][];
+  fitted?: boolean;
+}
+export interface NoteCanvas {
+  items: CanvasItem[];
+  height: number;
+}
 export interface Note {
   id: string;
   title: string;
@@ -7,6 +25,7 @@ export interface Note {
   group: string;
   layers: Record<Layer, string>;
   body?: string;
+  canvas?: NoteCanvas;
   parentId?: string | null;
   links: {
     target: string;

@@ -16,6 +16,9 @@ import {
   RefreshCw,
   Moon,
   Sun,
+  FileText,
+  Trash2,
+  CheckSquare,
 } from "lucide-react";
 import { lineage } from "./content";
 import type { Bootstrap, Note } from "./types";
@@ -31,6 +34,9 @@ import BrandMark from "./BrandMark";
 type View = "notes" | "graph" | "inbox" | "review" | "audio" | "settings";
 export default function App() {
   const [data, setData] = useState<Bootstrap>();
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const [detachedNote, setDetachedNote] = useState<Note>();
   const refreshVersion = useRef(0);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(!hosted || !!pairingToken());
@@ -53,11 +59,14 @@ export default function App() {
   const createdCallback = useRef<((n: Note) => Promise<void>) | undefined>(
     undefined,
   );
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
+  const [bulk, setBulk] = useState(false);
+  const [checked, setChecked] = useState<string[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark" | "paper">(() => {
     try {
-      return localStorage.getItem("synapse-theme") === "dark"
-        ? "dark"
-        : "light";
+      const saved = localStorage.getItem("synapse-theme");
+      return saved === "dark" || saved === "paper" ? saved : "light";
     } catch {
       return "light";
     }
@@ -79,7 +88,14 @@ export default function App() {
   const [newContext, setNewContext] = useState("Machine learning");
   const [newGroup, setNewGroup] = useState("Unsorted");
   const [practice, setPractice] = useState<string>();
-  const [sidebar, setSidebar] = useState(window.innerWidth >= 900);
+  const [sidebar, setSidebar] = useState(
+    () =>
+      window.innerWidth >= 900 &&
+      localStorage.getItem("synapse-sidebar") !== "hidden",
+  );
+  useEffect(() => {
+    localStorage.setItem("synapse-sidebar", sidebar ? "shown" : "hidden");
+  }, [sidebar]);
   useEffect(() => {
     const resize = () => {
       if (window.innerWidth < 900) setSidebar(false);
@@ -103,9 +119,15 @@ export default function App() {
     try {
       const d = await api<Bootstrap>("/bootstrap");
       if (requestVersion !== refreshVersion.current) return;
+      if (dirty.current && dataRef.current) {
+        const missing = dataRef.current.notes.find(
+          (n) => n.id === selected && !d.notes.some((x) => x.id === n.id),
+        );
+        if (missing) setDetachedNote(missing);
+      }
       setData(d);
       setSelected((id) =>
-        d.notes.some((n) => n.id === id)
+        dirty.current || d.notes.some((n) => n.id === id)
           ? id
           : d.notes.find((n) => n.title === "Embeddings")?.id ||
             d.notes[0]?.id ||
@@ -128,6 +150,22 @@ export default function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [connected]);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    if (shared || !connected) return;
+    const sync = () => {
+      if (document.visibilityState !== "hidden") void refreshRef.current();
+    };
+    const interval = setInterval(sync, 2500);
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [connected, shared]);
   useEffect(() => {
     if (!data || shared) return;
     const params = new URLSearchParams();
@@ -181,7 +219,9 @@ export default function App() {
         )}
       </div>
     );
-  const note = data.notes.find((n) => n.id === selected);
+  const note =
+    data.notes.find((n) => n.id === selected) ||
+    (detachedNote?.id === selected ? detachedNote : undefined);
   const filtered = data.notes.filter(
     (n) =>
       !query ||
@@ -278,28 +318,80 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-section-head">
-          <span>YOUR CONCEPTS</span>
+          <span>Notes</span>
           <button
             className="icon"
-            title="New concept"
-            aria-label="New concept"
+            title="Select notes"
+            aria-label="Select notes"
+            onClick={() => {
+              setBulk(!bulk);
+              setChecked([]);
+            }}
+          >
+            <CheckSquare size={16} />
+          </button>
+          <button
+            className="icon"
+            title="New note"
+            aria-label="New note"
             onClick={() => openCreate()}
           >
             <Plus size={16} />
           </button>
         </div>
+        {bulk && (
+          <div className="bulk-note-actions">
+            <label>
+              <input
+                type="checkbox"
+                aria-label="Select all visible notes"
+                checked={
+                  filtered.length > 0 &&
+                  filtered.every((n) => checked.includes(n.id))
+                }
+                onChange={(e) =>
+                  setChecked(e.target.checked ? filtered.map((n) => n.id) : [])
+                }
+              />{" "}
+              Select all
+            </label>
+            <button
+              className="danger-text"
+              disabled={!checked.length}
+              onClick={() => setDeleteConfirm(true)}
+            >
+              <Trash2 size={13} /> Delete {checked.length || ""}
+            </button>
+          </div>
+        )}
         <div className="note-list">
           {filtered.map((n) => (
-            <button
-              key={n.id}
-              className={
-                view === "notes" && selected === n.id ? "selected" : ""
-              }
-              onClick={() => navigate("notes", n)}
-            >
-              <span className={"status-dot " + n.status} />
-              <span>{n.title}</span>
-            </button>
+            <div key={n.id} className="note-list-row">
+              {bulk && (
+                <input
+                  type="checkbox"
+                  aria-label={"Select " + n.title}
+                  checked={checked.includes(n.id)}
+                  onChange={(e) =>
+                    setChecked((ids) =>
+                      e.target.checked
+                        ? [...ids, n.id]
+                        : ids.filter((id) => id !== n.id),
+                    )
+                  }
+                />
+              )}
+              <button
+                key={n.id}
+                className={
+                  view === "notes" && selected === n.id ? "selected" : ""
+                }
+                onClick={() => navigate("notes", n)}
+              >
+                <span className={"status-dot " + n.status} />
+                <span>{n.title}</span>
+              </button>
+            </div>
           ))}
           {!filtered.length && (
             <p className="muted small">No matching concepts.</p>
@@ -307,19 +399,28 @@ export default function App() {
         </div>
         <button className="new-note-button" onClick={() => openCreate()}>
           <Plus size={15} />
-          New concept
+          New note
         </button>
         <div className="sidebar-bottom">
-          <button
-            className="theme-switch"
-            aria-label={
-              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
-            }
-            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-          >
-            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}{" "}
-            {theme === "light" ? "Dark mode" : "Light mode"}
-          </button>
+          <div className="theme-options" aria-label="Appearance">
+            {(
+              [
+                ["light", "Light", Sun],
+                ["dark", "Dark", Moon],
+                ["paper", "Paper", FileText],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                aria-label={label + " mode"}
+                aria-pressed={theme === id}
+                onClick={() => setTheme(id)}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="local-status">
             <span className="live-dot" />
             <span>
@@ -378,7 +479,7 @@ export default function App() {
             >
               <button className="primary" onClick={() => openCreate()}>
                 <Plus size={15} />
-                Create a concept
+                Create a note
               </button>
             </Empty>
           ))}
@@ -447,6 +548,44 @@ export default function App() {
           </footer>
         </Modal>
       )}
+      {deleteConfirm && (
+        <Modal
+          title={"Delete " + checked.length + " notes?"}
+          onClose={() => setDeleteConfirm(false)}
+        >
+          <p>
+            These notes will move to Trash. You can restore them in Settings.
+          </p>
+          <footer className="dialog-actions">
+            <button onClick={() => setDeleteConfirm(false)}>Cancel</button>
+            <button
+              className="danger-text"
+              disabled={deleting}
+              onClick={async () => {
+                if (dirty.current && checked.includes(selected)) {
+                  notify("Save your current note before deleting it.");
+                  setDeleteConfirm(false);
+                  return;
+                }
+                setDeleting(true);
+                try {
+                  await api("/notes/trash", { ids: checked });
+                  setChecked([]);
+                  setDeleteConfirm(false);
+                  await refresh();
+                  notify("Notes moved to Trash.");
+                } catch (e) {
+                  notify((e as Error).message);
+                } finally {
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? "Deleting..." : "Move to Trash"}
+            </button>
+          </footer>
+        </Modal>
+      )}
       {toast && (
         <div className="toast" role="status">
           <span>{toast}</span>
@@ -461,11 +600,7 @@ export default function App() {
       )}
       {create && (
         <Modal
-          title={
-            creationParent
-              ? "Add a page inside this page"
-              : "Give an idea its own space"
-          }
+          title={creationParent ? "Add a page inside this page" : "New note"}
           onClose={() => setCreate(false)}
         >
           <p className="muted">
@@ -473,7 +608,7 @@ export default function App() {
             several topics later.
           </p>
           <label>
-            Concept title
+            Note title
             <input
               autoFocus
               value={newTitle}
@@ -518,7 +653,7 @@ export default function App() {
               }
             }}
           >
-            Create concept <ArrowUpRight size={15} />
+            Create note <ArrowUpRight size={15} />
           </button>
         </Modal>
       )}

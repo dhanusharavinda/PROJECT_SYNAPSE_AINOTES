@@ -4,6 +4,7 @@ import { bodyOf } from "./content";
 import { MD, Busy } from "./ui";
 import type { Note, Layer } from "./types";
 import BrandMark from "./BrandMark";
+import CanvasRead from "./CanvasRead";
 export default function Shared({ token }: { token: string }) {
   const [data, setData] = useState<any>();
   const [error, setError] = useState("");
@@ -125,6 +126,7 @@ export default function Shared({ token }: { token: string }) {
           Save shared note
         </button>
       )}
+      {data.note.canvas?.items.length > 0 && <CanvasRead canvas={data.note.canvas} share={token}/>}
       {data.note.body === undefined && data.note.drawings.length > 0 && (
         <section>
           <h3>Sketches and flows</h3>

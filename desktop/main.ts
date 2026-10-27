@@ -18,13 +18,18 @@ import { createApp } from "../server/app.js";
 import { seed } from "../server/seed.js";
 
 const { autoUpdater } = electronUpdater;
+if (process.env.SYNAPSE_DESKTOP_PROFILE)
+  electronApp.setPath(
+    "userData",
+    path.resolve(process.env.SYNAPSE_DESKTOP_PROFILE),
+  );
 let mainWindow: BrowserWindow | null = null;
 let httpServer: Server | null = null;
 let vaultLock: NetServer | null = null;
 let currentVault = "";
 let manualUpdateCheck = false;
 
-type DesktopConfig = { vaultPath?: string };
+type DesktopConfig = { vaultPath?: string; port?: number };
 
 function configFile() {
   return path.join(electronApp.getPath("userData"), "desktop.json");
@@ -71,7 +76,7 @@ async function chooseVault(): Promise<string | null> {
     if (folder.canceled || !folder.filePaths[0]) return null;
     selected = folder.filePaths[0];
   }
-  await saveConfig({ vaultPath: selected });
+  await saveConfig({ ...(await readConfig()), vaultPath: selected });
   return selected;
 }
 
@@ -109,16 +114,32 @@ async function startNotebook(vault: string) {
     response.sendFile(path.join(staticRoot, "index.html")),
   );
   app.use(errors);
+  const config = await readConfig();
+  const preferredPort =
+    Number.isInteger(config.port) && config.port! > 1024 && config.port! < 65536
+      ? config.port!
+      : 0;
   return new Promise<{ url: string }>((resolve, reject) => {
-    httpServer = app.listen(0, "127.0.0.1", () => {
-      const address = httpServer!.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("Synapse could not determine its local port."));
-        return;
-      }
-      resolve({ url: `http://127.0.0.1:${address.port}` });
-    });
-    httpServer.once("error", reject);
+    const listen = (port: number) => {
+      httpServer = app.listen(port, "127.0.0.1", async () => {
+        const address = httpServer!.address();
+        if (!address || typeof address === "string") {
+          reject(new Error("Synapse could not determine its local port."));
+          return;
+        }
+        try {
+          await saveConfig({ ...(await readConfig()), port: address.port });
+          resolve({ url: `http://127.0.0.1:${address.port}` });
+        } catch (error) {
+          reject(error);
+        }
+      });
+      httpServer.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EADDRINUSE" && port !== 0) listen(0);
+        else reject(error);
+      });
+    };
+    listen(preferredPort);
   });
 }
 
@@ -141,8 +162,36 @@ function createWindow(url: string) {
     },
   });
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
+    try {
+      const attachment = new URL(target);
+      if (
+        attachment.origin === localOrigin &&
+        /^\/files\/(attachments|audio)\/[-a-zA-Z0-9]+\.[a-z0-9]+$/.test(
+          attachment.pathname,
+        )
+      )
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: 1100,
+            height: 800,
+            autoHideMenuBar: true,
+            webPreferences: {
+              nodeIntegration: false,
+              contextIsolation: true,
+              sandbox: true,
+            },
+          },
+        };
+    } catch {}
     if (/^https?:\/\//i.test(target)) void shell.openExternal(target);
     return { action: "deny" };
+  });
+  mainWindow.webContents.on("did-create-window", (window) => {
+    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.webContents.on("will-navigate", (event, target) => {
+      if (new URL(target).origin !== localOrigin) event.preventDefault();
+    });
   });
   mainWindow.webContents.on("will-navigate", (event, target) => {
     try {
@@ -151,7 +200,9 @@ function createWindow(url: string) {
       event.preventDefault();
     }
   });
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    if (process.env.SYNAPSE_DESKTOP_HIDDEN !== "1") mainWindow?.show();
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -163,15 +214,14 @@ async function switchVault() {
     title: "Choose a Synapse vault",
     defaultPath: currentVault,
     properties: ["openDirectory", "createDirectory"] as (
-      | "openDirectory"
-      | "createDirectory"
+      "openDirectory" | "createDirectory"
     )[],
   };
   const result = mainWindow
     ? await dialog.showOpenDialog(mainWindow, options)
     : await dialog.showOpenDialog(options);
   if (result.canceled || !result.filePaths[0]) return;
-  await saveConfig({ vaultPath: result.filePaths[0] });
+  await saveConfig({ ...(await readConfig()), vaultPath: result.filePaths[0] });
   electronApp.relaunch();
   electronApp.exit(0);
 }
@@ -229,7 +279,7 @@ function installMenu() {
                 });
                 return;
               }
-              void autoUpdater.checkForUpdates();
+              void autoUpdater.checkForUpdates().catch(() => {});
             },
           },
           {
@@ -283,7 +333,7 @@ function configureUpdates() {
       detail: error.message,
     });
   });
-  setTimeout(() => void autoUpdater.checkForUpdates(), 5000);
+  setTimeout(() => void autoUpdater.checkForUpdates().catch(() => {}), 5000);
 }
 
 async function runSmokeCheck(url: string, target: string) {
@@ -320,7 +370,7 @@ if (!electronApp.requestSingleInstanceLock()) {
     mainWindow.focus();
   });
   electronApp.on("window-all-closed", () => electronApp.quit());
-  electronApp.on("before-quit", () => {
+  electronApp.on("will-quit", () => {
     httpServer?.close();
     vaultLock?.close();
   });
@@ -337,6 +387,39 @@ if (!electronApp.requestSingleInstanceLock()) {
       }
       currentVault = path.resolve(vault);
       const { url } = await startNotebook(currentVault);
+      if (process.env.SYNAPSE_DESKTOP_READY_FILE)
+        await fs.writeFile(
+          process.env.SYNAPSE_DESKTOP_READY_FILE,
+          JSON.stringify({ url, vault: currentVault }),
+        );
+      const origin = new URL(url).origin;
+      const clipboardPermission = (
+        permission: string,
+        requestingUrl: string,
+      ) => {
+        try {
+          return (
+            ["clipboard-read", "clipboard-sanitized-write"].includes(
+              permission,
+            ) && new URL(requestingUrl).origin === origin
+          );
+        } catch {
+          return false;
+        }
+      };
+      session.defaultSession.setPermissionRequestHandler(
+        (contents, permission, callback, details) => {
+          callback(
+            contents === mainWindow?.webContents &&
+              clipboardPermission(permission, details.requestingUrl),
+          );
+        },
+      );
+      session.defaultSession.setPermissionCheckHandler(
+        (contents, permission, requestingOrigin) =>
+          contents === mainWindow?.webContents &&
+          clipboardPermission(permission, requestingOrigin),
+      );
       const smokeTarget = process.env.SYNAPSE_DESKTOP_SMOKE_FILE;
       if (smokeTarget) {
         await runSmokeCheck(url, smokeTarget);

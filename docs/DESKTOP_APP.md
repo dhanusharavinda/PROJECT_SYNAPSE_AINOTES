@@ -59,4 +59,4 @@ Never commit the certificate or password. If the secrets are absent, the workflo
 - `npm run desktop:unpacked`: unpacked Windows app for local inspection
 - `npm run desktop:installer`: distributable Windows installer
 
-The desktop process starts the existing Express service on a random loopback port. It does not expose the notebook on the network. The BrowserWindow has Node integration disabled, context isolation and sandboxing enabled, external navigation blocked, and browser permissions denied.
+The desktop process starts the existing Express service on a loopback port and remembers it for the next launch so local appearance preferences survive restarts. If that port is busy, it chooses a new one. It does not expose the notebook on the network. The BrowserWindow has Node integration disabled, context isolation and sandboxing enabled, and external navigation blocked. Clipboard access is restricted to the notebook's own origin; other browser permissions are denied.

@@ -1,5 +1,7 @@
 # Synapse user guide
 
+For version 1.1, start with [Notebook sheet](NOTEBOOK_SHEET.md). It adds direct drawing, movable objects, Paper mode, custom shortcuts, live file refresh, and bulk deletion with recovery.
+
 Read [Current editor and graph](EDITOR_V2.md) for the current workflow. It supersedes the original fixed slider and separate drawing-panel descriptions below. Capture, backup, recall, and access limitations still apply.
 
 ## What it does

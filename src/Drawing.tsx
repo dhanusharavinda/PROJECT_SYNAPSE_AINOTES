@@ -6,7 +6,7 @@ import {
 } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { api } from "./api";
-import { Modal, Busy } from "./ui";
+import { Busy } from "./ui";
 import { diagramLayout } from "./diagramDesign";
 export default function Drawing({
   id,
@@ -93,6 +93,7 @@ export default function Drawing({
         elements,
         files,
         appState: { ...appState, exportBackground: false },
+        exportPadding: 8,
       });
       await api(
         "/drawings/" + id,
@@ -116,74 +117,68 @@ export default function Drawing({
       setBusy(false);
     }
   }
-  return (
+  const canvas = (
     <>
-      <Modal
-        title="Your drawing canvas"
-        wide
-        onClose={() => {
-          if (!dirty.current) onClose();
-          else setDiscard(true);
-        }}
-      >
-        <p className="muted">
-          Draw freely. Connect shapes with arrows. Your sketch does not change
-          knowledge links.
-        </p>
-        <div className="drawing-stage">
-          {data ? (
-            <Excalidraw
-              theme={
-                document.documentElement.dataset.theme === "dark"
-                  ? "dark"
-                  : "light"
-              }
-              excalidrawAPI={(a) => (ref.current = a)}
-              initialData={{
-                elements: data.elements,
-                files: data.files,
-                appState: { ...data.appState, collaborators: new Map() },
-                scrollToContent: true,
-              }}
-              onChange={() => {
-                dirty.current = true;
-              }}
-              UIOptions={{
-                canvasActions: {
-                  loadScene: false,
-                  saveToActiveFile: false,
-                  export: false,
-                },
-              }}
-            />
-          ) : (
-            <Busy />
-          )}
-        </div>
-        <footer className="dialog-actions">
-          <span className="muted">
-            Select an object and use arrow keys to move it.
-          </span>
-          <button className="primary" disabled={busy} onClick={save}>
-            {busy ? <Busy /> : "Save drawing"}
-          </button>
-        </footer>
-      </Modal>
-      {discard && (
-        <Modal title="Keep your drawing?" onClose={() => setDiscard(false)}>
-          <p>
-            The canvas has unsaved changes. Save them or close and discard this
-            draft.
-          </p>
-          <footer className="dialog-actions">
-            <button onClick={() => setDiscard(false)}>Keep drawing</button>
-            <button onClick={onClose}>Discard draft</button>
-            <button className="primary" onClick={save}>
-              Save drawing
-            </button>
-          </footer>
-        </Modal>
-      )}
+      <div className="drawing-stage">
+        {data ? (
+          <Excalidraw
+            theme={
+              document.documentElement.dataset.theme === "dark"
+                ? "dark"
+                : "light"
+            }
+            excalidrawAPI={(a) => (ref.current = a)}
+            initialData={{
+              elements: data.elements,
+              files: data.files,
+              appState: { ...data.appState, collaborators: new Map() },
+              scrollToContent: true,
+            }}
+            onChange={() => {
+              dirty.current = true;
+            }}
+            UIOptions={{
+              canvasActions: {
+                loadScene: false,
+                saveToActiveFile: false,
+                export: false,
+              },
+            }}
+          />
+        ) : (
+          <Busy />
+        )}
+      </div>
+      <footer className="dialog-actions">
+        <button
+          onClick={() => {
+            if (!dirty.current) onClose();
+            else setDiscard(true);
+          }}
+        >
+          Close
+        </button>
+        <button className="primary" disabled={busy} onClick={save}>
+          {busy ? <Busy /> : "Save drawing"}
+        </button>
+      </footer>
     </>
+  );
+  return (
+    <section className="inline-canvas-editor" aria-label="Edit drawing on page">
+      <header>
+        <h3>Edit drawing</h3>
+        <span className="small muted">Drag shapes, edit labels, or draw.</span>
+      </header>
+      {canvas}
+      {discard && (
+        <div className="inline-discard">
+          <p>Keep your changes?</p>
+          <button onClick={() => setDiscard(false)}>Keep editing</button>
+          <button onClick={onClose}>Discard changes</button>
+          <button onClick={save}>Save drawing</button>
+        </div>
+      )}
+    </section>
   );
 }

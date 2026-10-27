@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { parseVariants } from "./content";
 import { fileUrl } from "./api";
+import { copyText } from "./clipboard";
 
 export function VariantGroupView({ node, editor, getPos }: NodeViewProps) {
   const [open, setOpen] = useState(false);
@@ -203,7 +204,7 @@ function DrawingView({
       className="inline-drawing"
       data-drawing-id={node.attrs.id}
       style={{
-        width: node.attrs.width ? Math.min(node.attrs.width, 1200) : "100%",
+        width: node.attrs.width ? Math.min(node.attrs.width, 1200) : 280,
       }}
     >
       <div className="drawing-tools" contentEditable={false}>
@@ -213,8 +214,23 @@ function DrawingView({
               <PenLine size={13} />
               Edit drawing
             </button>
+            {extension.options.floatable && (
+              <button
+                onClick={() => {
+                  const pos = getPos();
+                  if (pos === undefined) return;
+                  editor.commands.deleteRange({
+                    from: pos,
+                    to: pos + node.nodeSize,
+                  });
+                  extension.options.onFloat(node.attrs.id);
+                }}
+              >
+                Move freely
+              </button>
+            )}
             <button
-              onMouseDown={e=>e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(event) => {
                 event.stopPropagation();
                 const pos = getPos();
@@ -237,7 +253,7 @@ function DrawingView({
         className="drawing-resizer"
         style={{
           resize: editor.isEditable ? "horizontal" : "none",
-          width: node.attrs.width ? "100%" : "fit-content",
+          width: "100%",
         }}
         onPointerDown={(e) => {
           resizeStart.current = Math.round(
@@ -258,7 +274,7 @@ function DrawingView({
       >
         <img
           style={{
-            width: node.attrs.width ? "100%" : "auto",
+            width: "100%",
             maxWidth: "100%",
           }}
           draggable={false}
@@ -285,7 +301,11 @@ export const DrawingBlock = Node.create({
   atom: true,
   draggable: true,
   addOptions() {
-    return { onOpen: (_id: string) => {} };
+    return {
+      onOpen: (_id: string) => {},
+      onFloat: (_id: string) => {},
+      floatable: false,
+    };
   },
   addAttributes() {
     return { id: { default: "" }, width: { default: null } };
@@ -400,10 +420,7 @@ function CodeView({ node, updateAttributes, editor }: NodeViewProps) {
         )}
         <button
           onClick={() =>
-            (
-              navigator.clipboard?.writeText(node.textContent) ||
-              Promise.reject(new Error())
-            )
+            copyText(node.textContent)
               .then(() => {
                 setCopied(true);
                 setCopyFailed(false);

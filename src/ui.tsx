@@ -7,6 +7,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { parseVariants } from "./content";
 import { fileUrl, mediaUrl } from "./api";
+import { copyText } from "./clipboard";
 export function Modal({
   title,
   children,
@@ -105,7 +106,11 @@ function MarkdownText({ text, share }: { text: string; share?: string }) {
           return (
             <a
               href={target ? mediaUrl(target) : target}
-              target={target?.startsWith("http") ? "_blank" : undefined}
+              target={
+                target?.startsWith("http") || target?.startsWith("/files/")
+                  ? "_blank"
+                  : undefined
+              }
               rel="noopener noreferrer"
             >
               {children}
@@ -143,10 +148,7 @@ function MarkdownText({ text, share }: { text: string; share?: string }) {
                   e.currentTarget.parentElement?.querySelector("code")
                     ?.textContent || "";
                 const button = e.currentTarget;
-                (
-                  navigator.clipboard?.writeText(code) ||
-                  Promise.reject(new Error())
-                )
+                copyText(code)
                   .then(() => {
                     button.textContent = "Copied";
                   })
@@ -231,7 +233,7 @@ export function MD({
             <img
               src={fileUrl("drawings", attrs.id + ".svg", share)}
               alt="Drawing or flowchart"
-              style={{ width: attrs.width || "100%", maxWidth: "100%" }}
+              style={{ width: attrs.width || 280, maxWidth: "100%" }}
             />
           </figure>,
         );

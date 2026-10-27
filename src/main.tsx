@@ -12,6 +12,7 @@ import "@fontsource/lora/500.css";
 import "@fontsource/inter/400-italic.css";
 import "@fontsource/lora/400-italic.css";
 import "./styles.css";
+import "./notebook.css";
 (window as any).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

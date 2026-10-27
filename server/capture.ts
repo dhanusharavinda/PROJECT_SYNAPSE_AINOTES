@@ -190,8 +190,10 @@ export async function ocr(file: string) {
   const { createWorker } = await import("tesseract.js");
   const base = path.dirname(
     fileURLToPath(import.meta.resolve("@tesseract.js-data/eng/package.json")),
-  );
+  ).replace("app.asar", "app.asar.unpacked");
+  const workerPath = path.join(path.dirname(fileURLToPath(import.meta.resolve("tesseract.js"))), "worker-script", "node", "index.js").replace("app.asar", "app.asar.unpacked");
   const worker = await createWorker("eng", 1, {
+    workerPath,
     langPath: path.join(base, "4.0.0"),
     gzip: true,
     cacheMethod: "none",

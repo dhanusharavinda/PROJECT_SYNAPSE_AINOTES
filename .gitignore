@@ -1,6 +1,7 @@
 node_modules/
 dist/
 desktop-dist/
+desktop-stage/
 release/
 vault/
 work/

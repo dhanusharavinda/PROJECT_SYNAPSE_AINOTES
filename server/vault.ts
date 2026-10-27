@@ -36,6 +36,43 @@ export const noteSchema = z.object({
     .transform((s) => s || "Unsorted"),
   layers: layersSchema,
   body: z.string().max(600000).optional(),
+  canvas: z
+    .object({
+      height: z.number().finite().min(0).max(100000),
+      items: z
+        .array(
+          z.object({
+            id: z.string().uuid(),
+            kind: z.enum([
+              "text",
+              "table",
+              "image",
+              "drawing",
+              "pen",
+              "arrow",
+              "rectangle",
+            ]),
+            x: z.number().finite().min(0).max(100000),
+            y: z.number().finite().min(0).max(100000),
+            width: z.number().finite().min(1).max(100000),
+            height: z.number().finite().min(1).max(100000),
+            text: z.string().max(200000).optional(),
+            src: z.string().max(4000).optional(),
+            drawingId: z.string().uuid().optional(),
+            color: z
+              .string()
+              .regex(/^#[0-9a-fA-F]{6}$/)
+              .optional(),
+            points: z
+              .array(z.tuple([z.number().finite(), z.number().finite()]))
+              .max(15000)
+              .optional(),
+            fitted: z.boolean().optional(),
+          }),
+        )
+        .max(1500),
+    })
+    .optional(),
   parentId: z.string().uuid().nullable().optional(),
   links: z.array(linkSchema).max(500),
   sources: z.array(z.string().uuid()).max(500),
@@ -80,7 +117,9 @@ export function decodeNote(raw: string): Note {
   });
   const layers = { intuition: "", technical: "", implementation: "" };
   if (data.format === 2 || content.includes("<!-- synapse:body -->")) {
-    const body = content.replace(/^\s*<!-- synapse:body -->\r?\n\r?\n/, "").replace(/\r?\n$/, "");
+    const body = content
+      .replace(/^\s*<!-- synapse:body -->\r?\n\r?\n/, "")
+      .replace(/\r?\n$/, "");
     return {
       ...parsed,
       id: safeId(data.id),
@@ -124,6 +163,7 @@ export function decodeNote(raw: string): Note {
   };
 }
 export class Vault {
+  fresh = false;
   tail: Promise<unknown> = Promise.resolve();
   constructor(public root: string) {}
   async init() {
@@ -141,6 +181,7 @@ export class Vault {
     try {
       await fs.access(this.file(".synapse/state.json"));
     } catch {
+      this.fresh = true;
       await atomic(
         this.file(".synapse/state.json"),
         JSON.stringify({
@@ -213,6 +254,12 @@ export class Vault {
     safeId(n.id);
     noteSchema.parse(n);
     const all = await this.notes(true);
+    const old = all.find((x) => x.id === n.id);
+    if (!old && expected !== undefined)
+      throw new AppError(
+        404,
+        "This note was deleted outside Synapse. Save your draft as a new note to keep it.",
+      );
     if (n.parentId) {
       let parent: string | null | undefined = n.parentId;
       const seen = new Set([n.id]);
@@ -224,15 +271,18 @@ export class Vault {
           );
         seen.add(parent);
         const ancestor = all.find((x) => x.id === parent);
+        if (!ancestor && old?.parentId === n.parentId) break;
         if (!ancestor)
           throw new AppError(400, "The parent page does not exist.");
         parent = ancestor.parentId;
       }
     }
     if (n.body !== undefined) {
-      const ids = inlineTargets(n.body).filter(
-        (id) => id !== n.id && all.some((x) => x.id === id),
-      );
+      const ids = inlineTargets(
+        n.body +
+          "\n" +
+          (n.canvas?.items.map((item) => item.text || "").join("\n") || ""),
+      ).filter((id) => id !== n.id && all.some((x) => x.id === id));
       n = {
         ...n,
         links: [
@@ -248,7 +298,6 @@ export class Vault {
         ],
       };
     }
-    const old = all.find((x) => x.id === n.id);
     if (old && (expected !== old.revision || (n.etag && old.etag !== n.etag)))
       throw new AppError(
         409,
@@ -270,7 +319,11 @@ export class Vault {
       );
     }
     for (const link of n.links) {
-      if (link.target === n.id || !all.some((x) => x.id === link.target))
+      if (
+        link.target === n.id ||
+        (!all.some((x) => x.id === link.target) &&
+          !old?.links.some((l) => l.target === link.target))
+      )
         throw new AppError(400, "Links must point to another existing note.");
     }
     const saved = {
@@ -284,6 +337,59 @@ export class Vault {
       ...saved,
       etag: crypto.createHash("sha256").update(encoded).digest("hex"),
     };
+  }
+  async trash(ids: string[]) {
+    return this.serial(async () => {
+      const all = await this.notes(true);
+      const selected = [...new Set(ids.map(safeId))];
+      if (selected.some((id) => !all.some((n) => n.id === id)))
+        throw new AppError(
+          409,
+          "A selected note has already changed or been deleted. Refresh and try again.",
+        );
+      const moved: string[] = [];
+      try {
+        for (const id of selected) {
+          await fs.mkdir(this.file(".synapse/trash"), { recursive: true });
+          await fs.rename(
+            this.file(`notes/${id}.md`),
+            this.file(`.synapse/trash/${id}.md`),
+          );
+          moved.push(id);
+        }
+      } catch (error) {
+        for (const id of moved)
+          await fs.rename(
+            this.file(`.synapse/trash/${id}.md`),
+            this.file(`notes/${id}.md`),
+          );
+        throw error;
+      }
+      return selected;
+    });
+  }
+  async trashed() {
+    await fs.mkdir(this.file(".synapse/trash"), { recursive: true });
+    const files = await fs.readdir(this.file(".synapse/trash"));
+    return Promise.all(
+      files
+        .filter((f) => f.endsWith(".md"))
+        .map(async (f) =>
+          decodeNote(
+            await fs.readFile(this.file(".synapse/trash/" + f), "utf8"),
+          ),
+        ),
+    );
+  }
+  async restoreTrash(id: string) {
+    return this.serial(async () => {
+      safeId(id);
+      const source = this.file(`.synapse/trash/${id}.md`);
+      const data = await fs.readFile(source, "utf8");
+      const destination = this.file(`notes/${id}.md`);
+      await fs.writeFile(destination, data, { flag: "wx" });
+      await fs.unlink(source);
+    });
   }
 }
 export function nextDue(

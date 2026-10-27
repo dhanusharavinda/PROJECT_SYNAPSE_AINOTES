@@ -10,6 +10,13 @@ import {
 import { api, hosted } from "./api";
 import { Busy } from "./ui";
 import type { Bootstrap, Note } from "./types";
+import {
+  usePreferences,
+  savePreferences,
+  shortcutDefaults,
+  shortcutLabels,
+  keyCombination,
+} from "./preferences";
 export default function Settings({
   data,
   refresh,
@@ -27,6 +34,8 @@ export default function Settings({
   });
   const [busy, setBusy] = useState(false);
   const [archived, setArchived] = useState<Note[]>([]);
+  const [trashed, setTrashed] = useState<Note[]>([]);
+  const preferences = usePreferences();
   const [pairOrigin, setPairOrigin] = useState("");
   const [pairing, setPairing] = useState<{
     origin: string;
@@ -66,6 +75,72 @@ export default function Settings({
         <ShieldCheck size={32} strokeWidth={1} />
       </header>
       <div className="settings-grid">
+        <section className="settings-card notebook-preferences">
+          <h3>Writing & shortcuts</h3>
+          <label>
+            Note font
+            <select
+              aria-label="Note font"
+              value={preferences.font}
+              onChange={(e) =>
+                savePreferences({
+                  ...preferences,
+                  font: e.target.value as "default" | "handwritten",
+                })
+              }
+            >
+              <option value="default">Book</option>
+              <option value="handwritten">Handwritten</option>
+            </select>
+          </label>
+          <p className={"font-preview " + preferences.font}>
+            Make room for your next idea.
+          </p>
+          <p className="small muted">
+            Click a shortcut, then press your new keys. Alt + a number keeps
+            ordinary typing available.
+          </p>
+          <div className="shortcut-list">
+            {Object.keys(shortcutDefaults).map((key) => (
+              <label key={key}>
+                {shortcutLabels[key]}
+                <input
+                  aria-label={shortcutLabels[key] + " shortcut"}
+                  readOnly
+                  value={preferences.shortcuts[key]}
+                  onKeyDown={(e) => {
+                    if (e.key === "Tab") return;
+                    e.preventDefault();
+                    const shortcut = keyCombination(e);
+                    if (!shortcut) return;
+                    if (
+                      Object.entries(preferences.shortcuts).some(
+                        ([id, value]) => id !== key && value === shortcut,
+                      )
+                    ) {
+                      notify("That shortcut is already used. Choose another.");
+                      return;
+                    }
+                    savePreferences({
+                      ...preferences,
+                      shortcuts: { ...preferences.shortcuts, [key]: shortcut },
+                    });
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <button
+            onClick={() =>
+              savePreferences({
+                ...preferences,
+                shortcuts: { ...shortcutDefaults },
+              })
+            }
+          >
+            Reset shortcuts
+          </button>
+        </section>
         <section className="settings-card">
           <h3>
             <FolderOpen size={18} />
@@ -290,6 +365,41 @@ export default function Settings({
                   try {
                     await api("/notes/" + n.id + "/restore", {});
                     setArchived((a) => a.filter((x) => x.id !== n.id));
+                    await refresh();
+                    notify("Note restored.");
+                  } catch (e) {
+                    notify((e as Error).message);
+                  }
+                }}
+              >
+                Restore
+              </button>
+            </div>
+          ))}
+        </section>
+        <section className="settings-card">
+          <h3>Trash</h3>
+          <p className="small muted">
+            Deleted notes stay here until you restore them. Attachments and
+            history are kept.
+          </p>
+          <button
+            onClick={() =>
+              api<Note[]>("/trash")
+                .then(setTrashed)
+                .catch((e) => notify(e.message))
+            }
+          >
+            Show deleted notes
+          </button>
+          {trashed.map((n) => (
+            <div className="archive-row" key={n.id}>
+              <span>{n.title}</span>
+              <button
+                onClick={async () => {
+                  try {
+                    await api("/trash/" + n.id + "/restore", {});
+                    setTrashed((notes) => notes.filter((x) => x.id !== n.id));
                     await refresh();
                     notify("Note restored.");
                   } catch (e) {

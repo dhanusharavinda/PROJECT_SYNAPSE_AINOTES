@@ -1,7 +1,7 @@
 import { Vault, uid } from "./vault.js";
 import type { Note } from "../src/types.js";
 export async function seed(v: Vault) {
-  if ((await v.notes(true)).length) return;
+  if (!v.fresh || (await v.notes(true)).length) return;
   const ids = Array.from({ length: 8 }, uid);
   const defs = [
     [

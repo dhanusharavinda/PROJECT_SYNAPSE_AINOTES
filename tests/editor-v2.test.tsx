@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { createRef,useState } from "react";
+import React, { createRef, useState } from "react";
 import { afterEach, beforeEach, it, expect, vi } from "vitest";
 import {
   render,
@@ -53,25 +53,46 @@ async function notebook(value = "Before embeddings after.") {
   const handle = createRef<EditorHandle>();
   const changed = vi.fn(),
     command = vi.fn();
-  function Harness(){const [body,setBody]=useState(value);return <Editor
-      ref={handle}
-      value={body}
-      onChange={value=>{changed(value);setBody(value);}}
-      onCommand={command}
-      onReady={(e) => (core = e)}
-    />;}
-  const view=render(<Harness/>);
+  function Harness() {
+    const [body, setBody] = useState(value);
+    return (
+      <Editor
+        ref={handle}
+        value={body}
+        onChange={(value) => {
+          changed(value);
+          setBody(value);
+        }}
+        onCommand={command}
+        onReady={(e) => (core = e)}
+      />
+    );
+  }
+  const view = render(<Harness />);
   await screen.findByRole("textbox", { name: "Note explanation" });
   await waitFor(() => expect(core).toBeTruthy());
   return { core, handle, changed, command, ...view };
 }
-it('preserves both diagrams when writing below the second one in a controlled note',async()=>{
- const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
- const {core}=await notebook('Before\n\n'+drawingMarkdown(a)+'\n\n'+drawingMarkdown(b)+'\n\nAfter');
- fireEvent.click(await screen.findAllByRole('button',{name:'Write below'}).then(buttons=>buttons[1]));
- expect(core.state.selection.$from.parent.type.name).toBe('paragraph');
- act(()=>core.commands.insertContent('Following text.'));
- expect(core.getMarkdown()).toContain(drawingMarkdown(a));expect(core.getMarkdown()).toContain(drawingMarkdown(b));expect(core.getMarkdown()).toContain('Following text.');
+it("preserves both diagrams when writing below the second one in a controlled note", async () => {
+  const a = "11111111-1111-4111-8111-111111111111",
+    b = "22222222-2222-4222-8222-222222222222";
+  const { core } = await notebook(
+    "Before\n\n" +
+      drawingMarkdown(a) +
+      "\n\n" +
+      drawingMarkdown(b) +
+      "\n\nAfter",
+  );
+  fireEvent.click(
+    await screen
+      .findAllByRole("button", { name: "Write below" })
+      .then((buttons) => buttons[1]),
+  );
+  expect(core.state.selection.$from.parent.type.name).toBe("paragraph");
+  act(() => core.commands.insertContent("Following text."));
+  expect(core.getMarkdown()).toContain(drawingMarkdown(a));
+  expect(core.getMarkdown()).toContain(drawingMarkdown(b));
+  expect(core.getMarkdown()).toContain("Following text.");
 });
 it("links the selected word without adding a see-also sentence", async () => {
   const { core, handle } = await notebook();
@@ -167,7 +188,7 @@ it("wraps selected text into optional variants while retaining surrounding writi
     { clientX: 160, clientY: 180 },
   );
   fireEvent.click(
-    screen.getByRole("menuitem", { name: /Add another variant/ }),
+    screen.getByRole("menuitem", { name: /Another explanation/ }),
   );
   expect(core.getText()).toContain("Before");
   expect(core.getText()).toContain("embeddings");
@@ -236,7 +257,7 @@ it("lets the table add rows and columns at the current selection", async () => {
 it("uses italic text and exposes diagrams through slash commands", async () => {
   const { core, command } = await notebook();
   act(() => core.commands.setTextSelection({ from: 8, to: 18 }));
-  fireEvent.click(screen.getByRole("button", { name: "Italic / cursive" }));
+  fireEvent.click(screen.getByRole("button", { name: "Italic" }));
   expect(core.getMarkdown()).toContain("*embeddings*");
   act(() => {
     core.commands.setTextSelection(core.state.doc.content.size - 1);
@@ -269,4 +290,31 @@ it("never stores a web pairing credential in a Markdown attachment URL", () => {
       '![Image](http://127.0.0.1:4317/files/attachments/image.png?access=abcdef123456 "synapse-width:320")',
     ),
   ).toBe('![Image](../attachments/image.png "synapse-width:320")');
+});
+it("keeps a context menu open while its own list scrolls", async () => {
+  const { core, container } = await notebook();
+  act(() => core.commands.setTextSelection({ from: 1, to: 4 }));
+  fireEvent.contextMenu(container.querySelector(".editor-wrap")!, {
+    clientX: 150,
+    clientY: 180,
+  });
+  const menu = screen.getByRole("menu", { name: "Edit selected content" });
+  fireEvent.scroll(menu, { target: { scrollTop: 200 } });
+  expect(
+    screen.queryByRole("menu", { name: "Edit selected content" }),
+  ).toBeTruthy();
+  fireEvent.scroll(window);
+  expect(
+    screen.queryByRole("menu", { name: "Edit selected content" }),
+  ).toBeNull();
+});
+it("pastes code as literal plain text, including angle brackets and newlines", async () => {
+  const { core, container } = await notebook("```python\nold\n```");
+  act(() => core.commands.setTextSelection({ from: 1, to: 4 }));
+  const plain = "if x < 3:\n    print('<hello>')";
+  fireEvent.paste(container.querySelector(".note-editor")!, {
+    clipboardData: { files: [], getData: () => plain },
+  });
+  expect(core.state.doc.firstChild?.textContent).toBe(plain);
+  expect(core.getMarkdown()).toContain(plain);
 });

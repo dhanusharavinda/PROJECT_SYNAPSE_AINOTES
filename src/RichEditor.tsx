@@ -39,6 +39,9 @@ import {
 } from "lucide-react";
 import { displayMarkdown, storageMarkdown } from "./markdown";
 import { mediaUrl } from "./api";
+import { usePreferences, keyCombination } from "./preferences";
+import { MediaImage } from "./editorMedia";
+import { copyText } from "./clipboard";
 const editorDisplay = (text: string) =>
   displayMarkdown(text).replace(/\/files\/attachments\/[^\s)]+/g, (url) =>
     mediaUrl(url),
@@ -64,19 +67,25 @@ export interface EditorHandle {
   getEditor: () => CoreEditor | null;
 }
 const NotebookImage = Image.extend({
+  addNodeView() {
+    return MediaImage;
+  },
   parseMarkdown(t, h) {
-    const size = String(t.title || "").match(/^synapse-width:(\d+)$/);
+    const size = String(t.title || "").match(
+      /^synapse-width:(\d+)(?:;align:(left|right))?$/,
+    );
     return h.createNode("image", {
       src: t.href,
       alt: t.text,
-      title: size ? null : t.title,
+      title: size ? (size[2] ? "synapse-align:" + size[2] : null) : t.title,
       width: size ? Number(size[1]) : null,
     });
   },
   renderMarkdown(n) {
     const width = n.attrs?.width;
+    const align = n.attrs?.title?.match(/^synapse-align:(left|right)$/)?.[1];
     const title = width
-      ? ` "synapse-width:${Math.round(Number(width))}"`
+      ? ` "synapse-width:${Math.round(Number(width))}${align ? ";align:" + align : ""}"`
       : n.attrs?.title
         ? ` "${n.attrs.title}"`
         : "";
@@ -89,24 +98,25 @@ const commandInfo = [
   ["h2", "Heading", Heading2],
   ["h3", "Small heading", Heading2],
   ["bold", "Bold", Bold],
-  ["italic", "Italic / cursive", Italic],
+  ["italic", "Italic", Italic],
   ["underline", "Underline", Underline],
   ["bullet", "Bulleted list", List],
   ["numbered", "Numbered list", ListOrdered],
   ["todo", "To-do list", ListTodo],
   ["code", "Code block", Code2],
   ["inline-code", "Inline code", Code2],
-  ["table", "Flexible table", Table2],
-  ["variant", "Add another variant", Layers],
+  ["table", "Table", Table2],
+  ["variant", "Another explanation", Layers],
   ["link", "Link a page", Link2],
   ["page", "Page inside this page", FilePlus2],
   ["image", "Upload image", ImagePlus],
   ["file", "Upload PDF or file", FilePlus2],
-  ["draw", "Drawing canvas", PenLine],
-  ["flowchart", "Generate flowchart draft", Workflow],
+  ["draw", "Draw on page", PenLine],
+  ["flowchart", "Make a flowchart", Workflow],
   ["diagram", "Diagram selected text or notes", Workflow],
   ["quote", "Quote", Quote],
   ["divider", "Divider", Minus],
+  ["float", "Move writing freely", Type],
 ] as const;
 
 const Editor = forwardRef<
@@ -118,12 +128,32 @@ const Editor = forwardRef<
     onUpload?: (file: File) => void;
     readOnly?: boolean;
     onReady?: (e: CoreEditor) => void;
+    compact?: boolean;
+    onPlace?: (
+      kind: "image" | "drawing" | "table" | "text",
+      src: string,
+      alt?: string,
+    ) => void;
   }
 >(function Editor(
-  { value, onChange, onCommand, onUpload, readOnly = false, onReady },
+  {
+    value,
+    onChange,
+    onCommand,
+    onUpload,
+    readOnly = false,
+    onReady,
+    compact = false,
+    onPlace,
+  },
   forwarded,
 ) {
   const change = useRef(onChange);
+  const preferences = usePreferences();
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const placeRef = useRef(onPlace);
+  placeRef.current = onPlace;
   change.current = onChange;
   const commandCallback = useRef(onCommand);
   commandCallback.current = onCommand;
@@ -151,9 +181,10 @@ const Editor = forwardRef<
   const doRef = useRef<(cmd: string) => void>(() => {});
   const filtered = commandInfo.filter(
     ([key, label]) =>
-      !slash ||
-      key.includes(slash.query.toLowerCase()) ||
-      label.toLowerCase().includes(slash.query.toLowerCase()),
+      (key !== "float" || !!onPlace) &&
+      (!slash ||
+        key.includes(slash.query.toLowerCase()) ||
+        label.toLowerCase().includes(slash.query.toLowerCase())),
   );
   const filteredRef = useRef(filtered);
   filteredRef.current = filtered;
@@ -166,6 +197,7 @@ const Editor = forwardRef<
         table: { resizable: true, allowTableNodeSelection: true },
       }),
       NotebookImage.configure({
+        HTMLAttributes: { "data-can-float": onPlace ? "true" : "false" },
         allowBase64: false,
         resize: {
           enabled: true,
@@ -182,6 +214,8 @@ const Editor = forwardRef<
       Pastel,
       DrawingBlock.configure({
         onOpen: (id: string) => commandCallback.current("drawing:" + id),
+        onFloat: (id: string) => placeRef.current?.("drawing", id),
+        floatable: !!onPlace,
       }),
       Placeholder.configure({
         placeholder:
@@ -240,6 +274,23 @@ const Editor = forwardRef<
         role: "textbox",
       },
       handleKeyDown: (_view, event) => {
+        const shade = Object.entries(preferencesRef.current.shortcuts).find(
+          ([key, shortcut]) =>
+            pastelNames.includes(key as any) &&
+            shortcut === keyCombination(event),
+        )?.[0];
+        if (shade && !_view.state.selection.empty) {
+          const mark = _view.state.schema.marks.pastel.create({ shade });
+          _view.dispatch(
+            _view.state.tr.addMark(
+              _view.state.selection.from,
+              _view.state.selection.to,
+              mark,
+            ),
+          );
+          event.preventDefault();
+          return true;
+        }
         if (event.key === "Escape") {
           setContext(undefined);
           setSlash(undefined);
@@ -266,6 +317,14 @@ const Editor = forwardRef<
         return false;
       },
       handlePaste: (view, event) => {
+        if (view.state.selection.$from.parent.type.name === "codeBlock") {
+          const text = event.clipboardData?.getData("text/plain");
+          if (text !== undefined) {
+            event.preventDefault();
+            view.dispatch(view.state.tr.insertText(text));
+            return true;
+          }
+        }
         const file = [...(event.clipboardData?.files || [])].find((f) =>
           f.type.startsWith("image/"),
         );
@@ -305,8 +364,22 @@ const Editor = forwardRef<
     editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
   useEffect(() => {
+    if (!editor || !onPlace) return;
+    const float = (event: Event) => {
+      event.preventDefault();
+      const data = (event as CustomEvent).detail;
+      placeRef.current?.("image", data.src, data.alt);
+    };
+    editor.view.dom.addEventListener("synapse:float-image", float);
+    return () =>
+      editor.view.dom.removeEventListener("synapse:float-image", float);
+  }, [editor, !!onPlace]);
+  useEffect(() => {
     if (!context) return;
-    const close = () => setContext(undefined);
+    const close = (event: Event) => {
+      if ((event.target as HTMLElement)?.closest?.(".context-menu")) return;
+      setContext(undefined);
+    };
     window.addEventListener("pointerdown", close);
     window.addEventListener("scroll", close, true);
     return () => {
@@ -416,7 +489,25 @@ const Editor = forwardRef<
     else if (cmd === "table")
       c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
     else if (cmd === "variant") addVariant();
-    else
+    else if (cmd === "float" && onPlace) {
+      const { from, to, $from } = editor.state.selection;
+      const range =
+        from === to
+          ? { from: $from.before(), to: $from.after() }
+          : { from, to };
+      let content =
+        editor.state.doc.slice(range.from, range.to).content.toJSON() || [];
+      if (
+        content.some(
+          (node: JSONContent) =>
+            node.type === "text" || node.type === "hardBreak",
+        )
+      )
+        content = [{ type: "paragraph", content }];
+      const text = editor.markdown!.serialize({ type: "doc", content });
+      editor.commands.deleteRange(range);
+      onPlace("text", text);
+    } else
       commandCallback.current(
         cmd === "concept" ? "page" : cmd === "diagram" ? "flowchart" : cmd,
       );
@@ -489,6 +580,10 @@ const Editor = forwardRef<
             .run();
       },
       insertImage: (src, alt) => {
+        if (onPlace) {
+          onPlace("image", src, alt);
+          return;
+        }
         if (!editor) return;
         restore();
         const displayed = mediaUrl(
@@ -497,7 +592,7 @@ const Editor = forwardRef<
         editor
           .chain()
           .focus()
-          .setImage({ src: displayed, alt })
+          .setImage({ src: displayed, alt, width: 280 } as any)
           .insertContent({ type: "paragraph" })
           .run();
         capture();
@@ -517,6 +612,10 @@ const Editor = forwardRef<
         capture();
       },
       insertDrawing: (id) => {
+        if (onPlace) {
+          onPlace("drawing", id);
+          return;
+        }
         if (!editor) return;
         restore();
         editor.commands.setTextSelection(editor.state.selection.to);
@@ -537,13 +636,13 @@ const Editor = forwardRef<
       },
       getEditor: () => editor,
     }),
-    [editor, slash],
+    [editor, slash, onPlace],
   );
   if (!editor) return null;
   const table = editor.isActive("table");
   const inlineButtons = [
     ["bold", "Bold", Bold],
-    ["italic", "Italic / cursive", Italic],
+    ["italic", "Italic", Italic],
     ["underline", "Underline", Underline],
     ["h2", "Heading", Heading2],
     ["bullet", "Bulleted list", List],
@@ -557,7 +656,7 @@ const Editor = forwardRef<
   ] as const;
   return (
     <div
-      className="editor-wrap"
+      className={"editor-wrap" + (compact ? " compact-editor" : "")}
       onContextMenu={(e) => {
         if (readOnly) return;
         e.preventDefault();
@@ -582,6 +681,12 @@ const Editor = forwardRef<
         if (id) {
           e.preventDefault();
           commandCallback.current("note:" + id);
+        } else if (a) {
+          e.preventDefault();
+          let href = a.getAttribute("href") || "";
+          href = href.replace(/^\.\.\/(attachments|drawings)\//, "/files/$1/");
+          if (/^(https?:\/\/|\/files\/)/i.test(href))
+            window.open(mediaUrl(href), "_blank", "noopener");
         }
       }}
     >
@@ -745,6 +850,31 @@ const Editor = forwardRef<
           >
             Remove table
           </button>
+          {onPlace && (
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const selection = editor.state.selection.$from;
+                for (let depth = selection.depth; depth > 0; depth--) {
+                  const node = selection.node(depth);
+                  if (node.type.name !== "table") continue;
+                  const from = selection.before(depth);
+                  const markdown = editor.markdown!.serialize({
+                    type: "doc",
+                    content: [node.toJSON()],
+                  });
+                  editor.commands.deleteRange({
+                    from,
+                    to: from + node.nodeSize,
+                  });
+                  onPlace("table", markdown);
+                  break;
+                }
+              }}
+            >
+              Move freely
+            </button>
+          )}
         </div>
       )}
       {slash && filtered.length > 0 && (
@@ -776,6 +906,7 @@ const Editor = forwardRef<
           className="context-menu"
           style={{ left: Math.max(8, context.x), top: Math.max(8, context.y) }}
           onPointerDown={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
         >
           <div className="context-format">
             {inlineButtons.slice(0, 8).map(([cmd, label, Icon]) => (
@@ -790,6 +921,46 @@ const Editor = forwardRef<
                 <Icon size={16} />
               </button>
             ))}
+          </div>
+          <div className="context-clipboard">
+            <button
+              role="menuitem"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={async () => {
+                await copyText(
+                  editor.state.doc.textBetween(
+                    editor.state.selection.from,
+                    editor.state.selection.to,
+                    "\n",
+                  ),
+                );
+                setContext(undefined);
+              }}
+            >
+              Copy <small>Ctrl+C</small>
+            </button>
+            <button
+              role="menuitem"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText();
+                  restore();
+                  editor.commands.insertContentAt(
+                    editor.state.selection,
+                    editor.isActive("codeBlock")
+                      ? { type: "text", text }
+                      : text.replace(/</g, "&lt;"),
+                  );
+                  setContext(undefined);
+                } catch {
+                  restore();
+                  setContext(undefined);
+                }
+              }}
+            >
+              Paste <small>Ctrl+V</small>
+            </button>
           </div>
           <div className="context-colors">
             {pastelNames.map((shade) => (
@@ -828,6 +999,7 @@ const Editor = forwardRef<
                 "bullet",
                 "quote",
                 "divider",
+                ...(onPlace ? ["float"] : []),
               ].includes(key),
             )
             .map(([cmd, label, Icon]) => (

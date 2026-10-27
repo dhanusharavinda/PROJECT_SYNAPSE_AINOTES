@@ -96,7 +96,13 @@ export function bodyOf(note: Note) {
     .trim();
 }
 export function plainNote(note: Note) {
-  return bodyOf(note)
+  return (
+    bodyOf(note) +
+    (note.canvas?.items
+      .filter((item) => item.kind === "text" || item.kind === "table")
+      .map((item) => "\n\n" + (item.text || ""))
+      .join("") || "")
+  )
     .replace(/^:::option.*$/gm, "")
     .replace(/^:::(?:variants|endvariants)\s*$/gm, "")
     .replace(/^:::endoption\s*$/gm, "")

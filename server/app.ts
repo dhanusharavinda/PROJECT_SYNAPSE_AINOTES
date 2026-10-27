@@ -138,6 +138,15 @@ export async function createApp(
     );
   });
   api.use(owner);
+  api.post("/notes/trash", async (req, res) => {
+    const ids = z.array(z.string().uuid()).min(1).max(500).parse(req.body.ids);
+    res.json({ ids: await vault.trash(ids) });
+  });
+  api.get("/trash", async (_req, res) => res.json(await vault.trashed()));
+  api.post("/trash/:id/restore", async (req, res) => {
+    await vault.restoreTrash(String(req.params.id));
+    res.json({ ok: true });
+  });
   api.post("/pairing", (req, res) => {
     if (pairings.valid(req))
       throw new AppError(
@@ -1198,8 +1207,15 @@ export async function createApp(
     if (folder === "drawings")
       res.setHeader(
         "Content-Security-Policy",
-        "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+        "sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:",
       );
+    if (folder === "drawings" && name.endsWith(".svg")) {
+      let svg = await fs.readFile(vault.file(folder + "/" + name), "utf8");
+      if (svg.includes("svg-source:excalidraw"))
+        svg = svg.replace(/(<\/defs>)\s*<rect x="0" y="0"[^>]*><\/rect>/, "$1");
+      res.type("svg").send(svg);
+      return;
+    }
     res.sendFile(vault.file(folder + "/" + name));
   });
   app.use("/api", (_req, res) =>

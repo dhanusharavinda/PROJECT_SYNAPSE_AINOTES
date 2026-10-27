@@ -24,6 +24,7 @@ import { Modal, MD, Busy } from "./ui";
 import Editor, { type EditorHandle } from "./Editor";
 import { bodyOf, lineage } from "./content";
 import DiagramPreview from "./DiagramPreview";
+import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
 const Drawing = lazy(() => import("./Drawing"));
 const layers: Layer[] = ["intuition", "technical", "implementation"];
 export default function NoteView({
@@ -49,6 +50,8 @@ export default function NoteView({
   const [draft, setDraft] = useState<Note>(initial);
   const latest = useRef<Note>(initial);
   const editorRef = useRef<EditorHandle>(null);
+  const sheetRef = useRef<SheetHandle>(null);
+  const activeEditor = () => sheetRef.current?.editor() || editorRef.current;
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadTail = useRef<Promise<unknown>>(Promise.resolve());
   const dirty = useRef(false);
@@ -56,7 +59,15 @@ export default function NoteView({
   const inFlight = useRef<Promise<Note> | null>(null);
   const [saveStatus, setSaveStatus] = useState("Saved locally");
 
-  const [connections, setConnections] = useState(true);
+  const [connections, setConnections] = useState(
+    () => localStorage.getItem("synapse-connections") !== "hidden",
+  );
+  useEffect(() => {
+    localStorage.setItem(
+      "synapse-connections",
+      connections ? "shown" : "hidden",
+    );
+  }, [connections]);
   const [modal, setModal] = useState("");
   const [target, setTarget] = useState("");
   const [relation, setRelation] = useState<Relation>("related");
@@ -203,6 +214,7 @@ export default function NoteView({
             context: edited.context,
             group: edited.group,
             parentId: edited.parentId,
+            canvas: edited.canvas,
           }
         : {}),
       body: edited?.body ?? (body === undefined ? bodyOf(n) : body),
@@ -230,7 +242,7 @@ export default function NoteView({
               source.title,
             );
           else
-            editorRef.current?.insertFile(
+            activeEditor()?.insertFile(
               "/files/attachments/" + source.file,
               source.title,
             );
@@ -259,25 +271,18 @@ export default function NoteView({
       setDrawing(cmd.slice(8));
       return;
     }
-    editorRef.current?.capture();
+    activeEditor()?.capture();
     if (cmd === "link") setModal("link");
     if (cmd === "page" || cmd === "concept")
       await action("page", async () =>
         onNew(draft.id, async (n) => {
-          editorRef.current?.linkTo(n.id, n.title);
+          activeEditor()?.linkTo(n.id, n.title);
           await save();
         }),
       );
-    if (cmd === "draw")
-      await action("drawing", async () => {
-        const result = await api("/notes/" + draft.id + "/drawings", {});
-        adopt(result.note, latest.current.body!);
-        editorRef.current?.insertDrawing(result.id);
-        await save();
-        setDrawing(result.id);
-      });
+    if (cmd === "draw") sheetRef.current?.tool("pen");
     if (cmd === "flowchart") {
-      setDiagramSelection(editorRef.current?.selectedText() || "");
+      setDiagramSelection(activeEditor()?.selectedText() || "");
       setDiagramNotes([]);
       setModal("diagram");
     }
@@ -365,6 +370,30 @@ export default function NoteView({
           </div>
         </header>
         <div className="note-content">
+          {!data.notes.some((n) => n.id === draft.id) && (
+            <div className="coverage" role="alert">
+              This note was deleted from the vault. Your unsaved draft is still
+              here.
+              <button
+                onClick={async () => {
+                  try {
+                    const recovered = await api<Note>("/notes", {
+                      ...latest.current,
+                      title: latest.current.title + " (recovered)",
+                    });
+                    dirty.current = false;
+                    onDirty(false);
+                    await refresh();
+                    onOpen(recovered);
+                  } catch (e) {
+                    notify((e as Error).message);
+                  }
+                }}
+              >
+                Save as a new note
+              </button>
+            </div>
+          )}
           <div className="note-meta">
             <span className={"pill status " + draft.status}>
               <i className={"status-dot " + draft.status} />
@@ -379,58 +408,61 @@ export default function NoteView({
               onChange={(e) => edit({ title: e.target.value })}
             />
           </h1>
-          <div className="context-row">
-            <label>
-              Meaning{" "}
-              <input
-                aria-label="Concept meaning"
-                value={draft.context}
-                onChange={(e) => edit({ context: e.target.value })}
-              />
-            </label>
-            <label>
-              Group{" "}
-              <input
-                aria-label="Topic group"
-                value={draft.group}
-                list="topic-groups"
-                onChange={(e) => edit({ group: e.target.value })}
-              />
-              <datalist id="topic-groups">
-                {[...new Set(data.notes.map((n) => n.group))].map((g) => (
-                  <option key={g}>{g}</option>
-                ))}
-              </datalist>
-            </label>
-          </div>
-          <div className="parent-picker">
-            <label>
-              Inside{" "}
-              <select
-                aria-label="Parent page"
-                value={draft.parentId || ""}
-                onChange={(e) => edit({ parentId: e.target.value || null })}
-              >
-                <option value="">My notebook</option>
-                {data.notes
-                  .filter(
-                    (n) =>
-                      n.id !== draft.id &&
-                      !lineage(n, data.notes).some((a) => a.id === draft.id),
-                  )
-                  .map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.title}
-                    </option>
+          <details className="page-details">
+            <summary>
+              {draft.group}
+              <ChevronRight size={12} /> Page details
+            </summary>
+            <div className="context-row">
+              <label>
+                Meaning{" "}
+                <input
+                  aria-label="Concept meaning"
+                  value={draft.context}
+                  onChange={(e) => edit({ context: e.target.value })}
+                />
+              </label>
+              <label>
+                Group{" "}
+                <input
+                  aria-label="Topic group"
+                  value={draft.group}
+                  list="topic-groups"
+                  onChange={(e) => edit({ group: e.target.value })}
+                />
+                <datalist id="topic-groups">
+                  {[...new Set(data.notes.map((n) => n.group))].map((g) => (
+                    <option key={g}>{g}</option>
                   ))}
-              </select>
-            </label>
-          </div>
+                </datalist>
+              </label>
+            </div>
+            <div className="parent-picker">
+              <label>
+                Inside{" "}
+                <select
+                  aria-label="Parent page"
+                  value={draft.parentId || ""}
+                  onChange={(e) => edit({ parentId: e.target.value || null })}
+                >
+                  <option value="">My notebook</option>
+                  {data.notes
+                    .filter(
+                      (n) =>
+                        n.id !== draft.id &&
+                        !lineage(n, data.notes).some((a) => a.id === draft.id),
+                    )
+                    .map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </div>
+          </details>
           <div className="writing-hint">
-            <span>
-              Write naturally. Select text and right-click to add a variant or
-              format it.
-            </span>
+            <span>Type / for more. Right-click to format.</span>
             <button onClick={() => command("page")}>
               <Plus size={12} />
               Subpage
@@ -469,13 +501,43 @@ export default function NoteView({
                 Flowchart ready for review <ChevronRight size={14} />
               </button>
             ))}
-          <Editor
-            ref={editorRef}
-            value={draft.body || ""}
-            onChange={(body) => edit({ body })}
+          <NotebookSheet
+            ref={sheetRef}
+            value={draft.canvas}
+            onChange={(canvas) => edit({ canvas })}
+            onDrawing={setDrawing}
+            onImage={() => command("image")}
             onCommand={command}
             onUpload={upload}
-          />
+          >
+            <Editor
+              ref={editorRef}
+              value={draft.body || ""}
+              onChange={(body) => edit({ body })}
+              onCommand={command}
+              onUpload={upload}
+              onPlace={(kind, src, alt) =>
+                kind === "image"
+                  ? sheetRef.current?.image(src, alt || "Image")
+                  : kind === "drawing"
+                    ? sheetRef.current?.drawing(src)
+                    : sheetRef.current?.block(kind, src)
+              }
+            />
+          </NotebookSheet>
+          {drawing && (
+            <Suspense fallback={<Busy />}>
+              <Drawing
+                id={drawing}
+                onClose={() => {
+                  setDrawing(undefined);
+                  setDrawingVersion((v) => v + 1);
+                  void refresh();
+                }}
+                notify={notify}
+              />
+            </Suspense>
+          )}
           <div className="inline-tools">
             <button
               onMouseDown={(e) => e.preventDefault()}
@@ -508,7 +570,7 @@ export default function NoteView({
             </button>
             <button onClick={() => setModal("resources")}>
               <FileText size={14} />
-              Reference material
+              Files & links
             </button>
           </div>
           {data.notes.some((n) => n.parentId === draft.id) && (
@@ -532,7 +594,7 @@ export default function NoteView({
             <details>
               <summary>
                 <FileText size={15} />
-                Reference material{" "}
+                Files & links{" "}
                 <span className="count">{currentSources.length}</span>
               </summary>
               {currentSources.map((s) => (
@@ -568,7 +630,6 @@ export default function NoteView({
           </section>
           <div className="practice-strip">
             <div>
-              <span className="section-label">Make it stick</span>
               <h3>Could you explain this without looking?</h3>
               <p>
                 {lastReview
@@ -619,7 +680,7 @@ export default function NoteView({
             </a>
             <button className="danger-text" onClick={() => setModal("archive")}>
               <Trash2 size={14} />
-              Archive
+              Delete
             </button>
           </footer>
         </div>
@@ -888,7 +949,7 @@ export default function NoteView({
                 const page = data.notes.find((n) => n.id === target);
                 if (!page) return;
                 edit({ links: [...draft.links, { target, relation, reason }] });
-                editorRef.current?.linkTo(target, page.title);
+                activeEditor()?.linkTo(target, page.title);
                 setModal("");
                 setTarget("");
                 setReason("");
@@ -1064,7 +1125,7 @@ export default function NoteView({
                       s.title,
                     );
                   else
-                    editorRef.current?.insertFile(
+                    activeEditor()?.insertFile(
                       s.file ? "/files/attachments/" + s.file : s.url || "#",
                       s.title,
                     );
@@ -1177,21 +1238,18 @@ export default function NoteView({
         </Modal>
       )}
       {modal === "archive" && (
-        <Modal title="Archive this note?" onClose={() => setModal("")}>
-          <p>
-            The Markdown file and its history will be preserved. Restore it from
-            Settings.
-          </p>
+        <Modal title="Delete this note?" onClose={() => setModal("")}>
+          <p>This note will move to Trash. You can restore it in Settings.</p>
           <button
             className="primary"
             onClick={() =>
               action("archive", async () => {
-                await api("/notes/" + draft.id, undefined, "DELETE");
+                await api("/notes/trash", { ids: [draft.id] });
                 setModal("");
               })
             }
           >
-            Archive note
+            Move to Trash
           </button>
         </Modal>
       )}
@@ -1306,10 +1364,7 @@ export default function NoteView({
                       (n) => n.id === proposal.target,
                     );
                     if (targetPage) {
-                      editorRef.current?.linkTo(
-                        targetPage.id,
-                        targetPage.title,
-                      );
+                      activeEditor()?.linkTo(targetPage.id, targetPage.title);
                       await save();
                     }
                   }
@@ -1321,26 +1376,6 @@ export default function NoteView({
             </button>
           </footer>
         </Modal>
-      )}
-      {drawing && (
-        <Suspense
-          fallback={
-            <div className="loading-overlay">
-              <Busy />
-              Loading drawing tools...
-            </div>
-          }
-        >
-          <Drawing
-            id={drawing}
-            onClose={() => {
-              setDrawing(undefined);
-              setDrawingVersion((v) => v + 1);
-              refresh();
-            }}
-            notify={notify}
-          />
-        </Suspense>
       )}
     </div>
   );

@@ -1,5 +1,21 @@
 # Build review
 
+## Notebook sheet, version 1.1.0
+
+Verified on 27 October 2026. The notebook now supports drawing directly on the page, freely placed text, tables, arrows, shapes, images, and flowcharts. Objects can be resized, moved, overlapped, duplicated, reordered, deleted, and restored through canvas undo/redo. Normal prose retains its text undo history. Older inline content can be moved into placed objects. Paper joins Light and Dark, with glass navigation, optional handwritten typography, configurable shortcuts, and a full-width writing area when side panels close. See [Notebook sheet](NOTEBOOK_SHEET.md).
+
+External Markdown deletion is reflected by polling and window focus. Deleted notes cannot be recreated by a stale autosave, and an unsaved deleted draft is offered separately for recovery. Multi-delete moves notes to recoverable Trash. Existing empty vaults no longer regain starter notes. Canvas content remains in the note's Markdown frontmatter, and readable writing remains in its body. Full layout fidelity requires Synapse.
+
+The installed package decreased from 865.3 MiB to 519.2 MiB, a 40.0% reduction. Runtime staging removes development and duplicate OCR assets while preserving offline OCR, PDF extraction, FFmpeg, and bundled diagram fonts. Electron remains the largest component. The Windows installer is approximately 176 MiB. The installer, update metadata, and block map built successfully. This installer is unsigned and has not been published as a GitHub Release.
+
+Strict TypeScript, 89 automated tests, and the production build pass. The production dependency audit reports zero known vulnerabilities. Tests cover external deletion, stale autosave refusal, bulk Trash and restore, surviving dangling links, canvas persistence, variants, and existing editor behavior. Browser interaction checks cover direct drawing, movement, undo/redo, duplication, deletion, floating writing persistence, right-click scrolling, and external deletion. The actual packaged desktop app passes offline OCR, PDF extraction, embedded-font diagram export, compact image insertion and resizing, table row/column controls, literal code paste, code copying, and opening uploaded PDFs. No cloud inference or Telegram delivery was exercised for this revision.
+
+Visual review covers Light, Dark, and Paper, including 1440, 768, and 390 pixel views. Narrow companion views stack objects for reading while retaining their saved desktop positions. The desktop notebook keeps free placement. Small toolbar labels remain compact, and a tall diagram may need enlargement to read its labels. The notebook is a bounded page that grows downward, not an infinite whiteboard. Each pen stroke is independently movable; group selection is not implemented. These are current limits, not claims of professional drawing-suite parity.
+
+Appearance and handwriting preferences persist through a clean packaged-app restart on the same saved local origin. Code clipboard contents were compared after normalizing Windows line endings. The final visual inspector reports zero failures and three advisory warnings for compact control text, navigation spacing, and a diagram being classified as a numeric chart.
+
+The previous review below records earlier revisions and their separate integration checks.
+
 ## Current revision: 27 October 2026
 
 Desktop packaging is now the primary distribution direction. The Electron shell runs the existing local server on loopback, stores the selected vault outside the installation, offers vault switching and folder access, and checks GitHub Releases for updates. The installer leaves vault data untouched. Public distribution still needs a Windows code-signing certificate to establish publisher trust and reduce SmartScreen warnings.

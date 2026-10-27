@@ -2,6 +2,9 @@
 name: Synapse
 description: A sage and ink notebook with a quiet frame and a readable working sheet.
 colors:
+  sheet-selection: "#86a28e"
+  paper-margin: "#d6a7a76b"
+  selection-ink: "#173c2e"
   ink: "#24392f"
   muted: "#606e65"
   green: "#245344"
@@ -25,6 +28,19 @@ colors:
   diagram-accent: "#bf4520"
   diagram-rule: "#bfc0c0"
 typography:
+  small:
+    fontSize: "11px"
+  body-ui:
+    fontSize: "14px"
+  metadata:
+    fontSize: "13px"
+  writing-title:
+    fontSize: "32px"
+  handwriting:
+    fontFamily: "Segoe Print, Bradley Hand, cursive"
+    fontSize: "17px"
+  font-preview:
+    fontSize: "20px"
   page-title:
     fontFamily: "Inter, sans-serif"
     fontSize: "28px"
@@ -56,6 +72,8 @@ typography:
     fontSize: "12px"
     lineHeight: 1.7
 rounded:
+  handle: "4px"
+  sheet-tools: "12px"
   inline: "3px"
   badge: "5px"
   content: "6px"
@@ -109,6 +127,16 @@ components:
 ---
 
 # Design System: Synapse
+
+## Notebook sheet update, 27 October 2026
+
+The user requested glass navigation and a ruled Paper mode. These explicit material choices override the generic flat-surface guidance for navigation and notebook ruling. The sage and ink identity remains. Light and Dark remain available beside Paper. The writing sheet fills the available width when side panels close, and those choices persist.
+
+The note is a working surface with a compact Write, Move, Pen, Arrow, Shape, Text box, and Table toolbar. Content starts small and can be moved, resized, layered, copied, undone, or deleted. New pen marks use tight bounds. Generated diagrams and older drawings can be edited inside the page. Optional explanation labels use an underline and a transparent background. Page details stay behind a disclosure. The separate diagram palette remains unchanged.
+
+The standard reading face stays Lora. Handwritten writing uses the installed Windows Segoe Print face, with local cursive fallbacks, and introduces no font download. Small utility text has an 11px floor. The glass surface uses translucent low-chroma sage with an 18px backdrop blur. Paper uses a warm white sheet, faint 32px blue-gray ruling, and a quiet margin line. On the narrow web companion, placed objects read in document order; the Windows app retains their free positions.
+
+Direction record: Taste's Framed sheet, seed 313269818, with the user-requested glass and paper exceptions. The signature is a learning sheet that combines explanation, annotation, and recall. The principal screen question is: what am I trying to understand, and how can I express it here?
 
 ## Overview
 

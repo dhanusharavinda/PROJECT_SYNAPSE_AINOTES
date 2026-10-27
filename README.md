@@ -4,6 +4,8 @@ A desktop-first, local study notebook with intentional links, an organized Knowl
 
 The current editor includes contextual formatting, optional definition variants, inline transparent drawings, selected-text diagrams, flexible tables, image insertion, subpages, breadcrumbs, and light/dark themes. See [Current editor and graph](docs/EDITOR_V2.md).
 
+Version 1.1 adds a full-width notebook sheet, direct pen and arrow tools, movable writing and tables, compact images and diagrams, Paper mode, a handwritten font option, customizable shortcuts, automatic file refresh, and bulk Trash. See [Notebook sheet](docs/NOTEBOOK_SHEET.md).
+
 The Windows app is the main Synapse product. It runs the notebook service inside the app and keeps the vault in a separate folder, normally `Documents\Synapse`. The optional Vercel companion can still connect to a running local service, but it is not required for ordinary use. The vault is never packaged into the installer.
 
 ## Install the Windows app
