@@ -1,6 +1,6 @@
 # Synapse on iPad and Android
 
-Synapse 1.4 adds an installable tablet notebook at `/tablet/`. The Windows app remains the full workspace. Both use editable text, canvas objects and pen strokes.
+Synapse 1.5 provides an installable tablet notebook at `/tablet/`. The Windows app remains the full workspace. Both use editable text, canvas objects and pen strokes.
 
 ## Install
 
@@ -10,16 +10,16 @@ Write normally, choose Pen for handwriting, or Text to place writing on the shee
 
 ## Connect Windows once
 
-1. Update Windows Synapse to 1.4 or later and keep it open.
-2. Install [Tailscale](https://tailscale.com/download) on Windows and the tablet. Sign in to the same private network. This handles both local Wi-Fi and an away-from-home connection.
-3. In Windows Synapse Settings, expand **Pair iPad or Android notebook**, then choose **Enable private sync**.
-4. Run the exact `tailscale serve --bg http://127.0.0.1:PORT` command shown there in PowerShell. If Tailscale asks to enable HTTPS, complete its own consent page. Use Serve, which is private to the tailnet. The displayed port is a dedicated device gateway, not the desktop owner server.
-5. On the tablet open **Connect & backup**. Copy the shown app origin, for example `https://your-site.vercel.app`, into the Windows pairing form. Do not include `/tablet/` in the origin.
-6. Generate a five-minute device code. Enter that code and the private HTTPS PC address printed by Tailscale in the tablet app. Choose **Pair and sync**.
+1. Update Windows Synapse to 1.5 or later and keep it open.
+2. In Windows Settings, find **Connect a device** and choose **Show pairing QR code**.
+3. On the tablet open **Connect & backup**, choose **Scan PC QR code**, and point the camera at the screen.
+4. Choose **Approve and connect** on the tablet. Synapse remembers the connection.
 
-Only paired tokens can read or write through the device gateway. Tokens are hashed on the PC and can be revoked in Settings. A private connection still requires the PC to be awake and Synapse running. If the gateway port changes because another process uses it, enable private sync again and rerun the displayed Serve command.
+The QR code expires after five minutes and can be used once. If camera access is unavailable, choose **Use a pairing link instead** on Windows and paste the link into the tablet's matching option. You can revoke a device in Windows Settings. Existing 1.4 direct connections still work under Advanced direct connection; scan a QR code to switch.
 
-Official setup references: [Windows installation](https://tailscale.com/docs/install/windows), [Serve](https://tailscale.com/docs/features/tailscale-serve), [Serve command](https://tailscale.com/docs/reference/tailscale-cli/serve).
+No VPN, IP address or router configuration is needed. QR sync uses an internet relay on both local Wi-Fi and remote networks, so both devices need internet and the PC must be awake with Synapse open. Offline writing and drawing still work without it.
+
+Notes are encrypted on the sending device with keys derived using P-256 ECDH and HKDF-SHA-256, then AES-256-GCM. Only the paired devices hold the private keys. The relay forwards encrypted chunks without storing note content. It stores connection metadata and hashed access credentials. Metadata is not anonymous: the service sees network addresses, room/device identifiers and transfer timing. Treat the vault's .synapse configuration folder as private, since it contains the PC connection identity.
 
 ## What sync means
 

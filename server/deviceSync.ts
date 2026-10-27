@@ -5,7 +5,13 @@ import type { Server } from "node:http";
 import { z } from "zod";
 import { Vault, AppError, atomic, noteSchema, uid } from "./vault.js";
 export class DeviceSync {
-  records: { id: string; hash: string; origin: string; name: string }[] = [];
+  records: {
+    id: string;
+    hash: string;
+    origin: string;
+    name: string;
+    relayPublicKey?: string;
+  }[] = [];
   codes = new Map<
     string,
     { origin: string; expires: number; attempts: number }
@@ -63,12 +69,10 @@ export class DeviceSync {
       res.setHeader("Referrer-Policy", "no-referrer");
       if (origin) {
         if (!this.allows(origin))
-          return res
-            .status(403)
-            .json({
-              error:
-                "Generate a pairing code for this website in Windows Settings.",
-            });
+          return res.status(403).json({
+            error:
+              "Generate a pairing code for this website in Windows Settings.",
+          });
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Vary", "Origin");
         if (req.method === "OPTIONS") {

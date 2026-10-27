@@ -110,8 +110,17 @@ async function startNotebook(vault: string) {
   await acquireVaultLock(vault);
   process.env.SYNAPSE_APP_ROOT = electronApp.getAppPath();
   process.env.SYNAPSE_RESOURCES_PATH = process.resourcesPath;
-  const { app, vault: notebook, errors, devices } = await createApp(vault);
-  closeDeviceGateway = () => devices.closeGateway();
+  const {
+    app,
+    vault: notebook,
+    errors,
+    devices,
+    relay,
+  } = await createApp(vault);
+  closeDeviceGateway = () => {
+    relay.close();
+    devices.closeGateway();
+  };
   await seed(notebook);
   const staticRoot = path.join(electronApp.getAppPath(), "dist");
   await fs.access(path.join(staticRoot, "index.html"));

@@ -146,3 +146,8 @@ Late in QA, the embedded browser stopped reliably dispatching mouse and keyboard
 The offline app shell is approximately 2.7 MB before user data. The desktop workspace is excluded from tablet precaching. A manual design scan reported three advisory font-size differences in the tablet surface, with no blocking findings. Physical iPad/Android pen latency, native palm rejection, real private-network setup and background OS suspension were not tested. No real user vault or active installed app was changed during QA.
 
 The packaged Windows 1.4 runtime was launched hidden with an isolated empty vault and profile. Its page returned 200, its unauthenticated device endpoint returned 401, and the dedicated gateway refused the owner API with 404. The test process was then closed; the installed user app was left running.
+
+
+## QR pairing 1.5
+
+143 tests pass, including real QR pixel decoding, ECDH agreement, authenticated encryption, tamper rejection, room/direction binding, packet assembly and expired-invite rejection. A local Durable Object integration check passed pairing, editable note transfers, idempotent retries, conflicts, reconnection, chunked attachment transfer and revocation. Browser approval through a pairing link reached Synced. Camera scanning on a physical tablet remains unverified. Live relay validation is recorded in the release handoff.

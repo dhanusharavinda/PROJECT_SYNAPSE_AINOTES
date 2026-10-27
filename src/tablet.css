@@ -213,3 +213,30 @@
   pointer-events: none;
   opacity: 0.6;
 }
+.device-qr {
+  padding: 16px 0;
+  max-width: 440px;
+}
+.device-qr img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 7px;
+}
+.qr-scanner video {
+  width: 100%;
+  max-width: 480px;
+  max-height: 50dvh;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #24392f;
+}
+.pair-approval {
+  padding: 16px 0;
+  border-block: 1px solid var(--line);
+  margin: 16px 0;
+}
+.tablet-settings details {
+  margin: 14px 0;
+}

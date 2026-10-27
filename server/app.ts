@@ -29,6 +29,8 @@ import { deliverHermes } from "./hermes.js";
 import { youtubeLink } from "../src/youtube.js";
 import { diagramSchema } from "./diagramSchema.js";
 import { DeviceSync } from "./deviceSync.js";
+import { RelayHost } from "./relayHost.js";
+import QRCode from "qrcode";
 import type { Note, Proposal, Source } from "../src/types.js";
 
 export async function createApp(
@@ -45,6 +47,7 @@ export async function createApp(
   const pairings = new Pairings();
   const devices = new DeviceSync(vault);
   await devices.load();
+  const relay = new RelayHost(vault, devices);
   const port = process.env.PORT || "4317";
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -147,6 +150,23 @@ export async function createApp(
     );
   });
   api.use(owner);
+  api.post("/devices/qr", async (req, res) => {
+    if (pairings.valid(req)) throw new AppError(403, "Pair from the local PC.");
+    const result = await relay.invitation(req.body.origin || undefined);
+    res.json({
+      link: result.link,
+      expires: result.invite.expires,
+      qr: await QRCode.toDataURL(result.link, {
+        width: 320,
+        margin: 3,
+        errorCorrectionLevel: "M",
+        color: { dark: "#24392f", light: "#ffffff" },
+      }),
+    });
+  });
+  api.get("/devices/relay-status", (_req, res) =>
+    res.json({ configured: !!relay.config, status: relay.status }),
+  );
   api.post("/devices/pair", (req, res) => {
     if (pairings.valid(req)) throw new AppError(403, "Pair from the local PC.");
     res.json(devices.start(z.string().parse(req.body.origin)));
@@ -167,6 +187,7 @@ export async function createApp(
       throw new AppError(403, "Revoke from the local PC.");
     devices.records = devices.records.filter((r) => r.id !== req.params.id);
     await devices.save();
+    await relay.revoke(String(req.params.id)).catch(() => {});
     res.json({ ok: true });
   });
   api.post("/notes/trash", async (req, res) => {
@@ -1412,7 +1433,8 @@ export async function createApp(
         console.error("Private sync gateway could not start:", e.message);
     }
   }
-  return { app, vault, providers, errors, devices };
+  if (!options.test) await relay.load();
+  return { app, vault, providers, errors, devices, relay };
 }
 function isLocal(address: string | undefined) {
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address || "");

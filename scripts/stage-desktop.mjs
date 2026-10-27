@@ -27,6 +27,7 @@ const runtime = [
   "pdfjs-dist",
   "tesseract.js",
   "zod",
+  "qrcode",
 ];
 await fs.mkdir(stage, { recursive: true });
 const manifest = {

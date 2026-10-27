@@ -730,3 +730,5 @@
     width: 100% !important;
   }
 }
+.device-pairing .device-qr {padding:16px 0;max-width:440px;}
+.device-pairing .device-qr img {display:block;max-width:100%;height:auto;background:#fff;border-radius:7px;}

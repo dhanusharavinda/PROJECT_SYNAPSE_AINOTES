@@ -17,7 +17,21 @@ import {
 import type { Note } from "./types";
 import "./tablet.css";
 import { nextTheme } from "./themes";
-type Connection = { url: string; token: string; identity: string };
+import { RelayClient, connectInvite, relayFile } from "./relayClient";
+import {
+  discoverRelay,
+  from64,
+  validateInvite,
+  type PairInvite,
+  type RelayAccess,
+} from "./relayProtocol";
+import QrScanner from "./QrScanner";
+type Connection = {
+  url: string;
+  token: string;
+  identity: string;
+  relay?: RelayAccess;
+};
 const mediaCache = "synapse-media-v1";
 class SyncError extends Error {}
 export default function TabletApp() {
@@ -42,6 +56,83 @@ export default function TabletApp() {
     restore = useRef<HTMLInputElement>(null),
     revision = useRef("");
   const [writer, setWriter] = useState(false);
+  const [scanning, setScanning] = useState(false),
+    [pairLink, setPairLink] = useState(""),
+    [invite, setInvite] = useState<PairInvite>();
+  const relayClient = useRef<RelayClient | undefined>(undefined);
+  function client() {
+    const c = connection.current;
+    if (!c?.relay) throw Error("Pair this device first.");
+    if (!relayClient.current || relayClient.current.access !== c.relay) {
+      relayClient.current?.close();
+      relayClient.current = new RelayClient(c.relay);
+    }
+    return relayClient.current;
+  }
+  async function readInvite(text: string) {
+    setScanning(false);
+    try {
+      const url = new URL(text);
+      if (
+        url.origin !== location.origin ||
+        url.pathname !== "/tablet/" ||
+        url.hash.length > 2500
+      )
+        throw Error("Use the pairing link shown in Windows Synapse.");
+      const value = validateInvite(
+        JSON.parse(
+          new TextDecoder().decode(
+            from64(new URLSearchParams(url.hash.slice(1)).get("pair") || ""),
+          ),
+        ),
+      );
+      if (value.url !== (await discoverRelay()))
+        throw Error(
+          "This code uses a different connection service. Generate a fresh QR code on your PC.",
+        );
+      setInvite(value);
+      setSettings(true);
+      setError("");
+    } catch (e) {
+      fail(e);
+    }
+  }
+  async function acceptInvite() {
+    if (!invite || !writer) return;
+    setBusy(true);
+    try {
+      const paired = await connectInvite(invite, connection.current?.identity);
+      relayClient.current?.close();
+      relayClient.current = undefined;
+      connection.current = {
+        url: paired.access.url,
+        token: paired.token,
+        identity: paired.identity,
+        relay: paired.access,
+      };
+      localStorage.setItem(
+        "synapse-tablet-connection",
+        JSON.stringify(connection.current),
+      );
+      setInvite(undefined);
+      setSettings(false);
+      setPairLink("");
+      revision.current = "";
+      await sync();
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (location.hash.startsWith("#pair=")) {
+      const link = location.href;
+      history.replaceState(null, "", location.pathname);
+      void readInvite(link);
+    }
+    return () => relayClient.current?.close();
+  }, []);
   useEffect(() => {
     let live = true,
       release: (() => void) | undefined;
@@ -177,6 +268,12 @@ export default function TabletApp() {
   async function remote(path: string, body?: unknown) {
     const c = connection.current;
     if (!c) throw Error("Pair this notebook first.");
+    if (c.relay) {
+      const result = await client().request(path, body, c.token);
+      if (result.status < 200 || result.status >= 300)
+        throw new SyncError(result.data?.error || "Sync could not finish.");
+      return result.data;
+    }
     const r = await fetch(c.url + "/api/device/" + path, {
       method: body ? "POST" : "GET",
       headers: {
@@ -241,16 +338,27 @@ export default function TabletApp() {
       }
       const [folder, name] = path.split("/"),
         c = connection.current!;
-      const r = await fetch(
-        c.url + "/api/device/file?folder=" + folder + "&name=" + name,
-        {
-          headers: { Authorization: "Bearer " + c.token },
-          signal: AbortSignal.timeout(15000),
-        },
-      );
-      if (!r.ok) continue;
-      if (Number(r.headers.get("content-length")) > 20 * 1024 * 1024) continue;
-      const blob = await r.blob();
+      let blob: Blob;
+      if (c.relay) {
+        const reply = await client().request(
+          "file?folder=" + folder + "&name=" + name,
+          undefined,
+          c.token,
+        );
+        if (reply.status !== 200) continue;
+        blob = relayFile(reply);
+      } else {
+        const r = await fetch(
+          c.url + "/api/device/file?folder=" + folder + "&name=" + name,
+          {
+            headers: { Authorization: "Bearer " + c.token },
+            signal: AbortSignal.timeout(15000),
+          },
+        );
+        if (!r.ok || Number(r.headers.get("content-length")) > 20 * 1024 * 1024)
+          continue;
+        blob = await r.blob();
+      }
       if (blob.size > 20 * 1024 * 1024) continue;
       const asset = {
         name: path,
@@ -616,42 +724,84 @@ export default function TabletApp() {
             Pages save here first. While open, this app syncs about every two
             seconds when your PC is reachable.
           </p>
-          <ol>
-            <li>
-              Install Tailscale on your PC and tablet. Sign in to the same
-              private network.
-            </li>
-            <li>
-              In Windows Synapse Settings, open “Pair iPad or Android”. Enable
-              private sync and follow the HTTPS command there.
-            </li>
-            <li>
-              Generate a code for <code>{location.origin}</code>, then enter it
-              below.
-            </li>
-          </ol>
-          <label>
-            Private PC address
-            <input
-              aria-label="PC endpoint"
-              autoCapitalize="none"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://your-pc.your-network.ts.net"
-            />
-          </label>
-          <label>
-            One-time pairing code
-            <input
-              aria-label="Device pairing code"
-              autoCapitalize="none"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-            />
-          </label>
-          <button disabled={busy || !code || !url} onClick={() => void pair()}>
-            Pair and sync
+          <p>
+            On your PC, open Settings → Pair device. Scan its QR code here, then
+            approve the connection. No extra app is required.
+          </p>
+          <button disabled={busy || !writer} onClick={() => setScanning(true)}>
+            Scan PC QR code
           </button>
+          {scanning && (
+            <QrScanner
+              onRead={(text) => void readInvite(text)}
+              onClose={() => setScanning(false)}
+            />
+          )}
+          <details>
+            <summary>Paste a pairing link</summary>
+            <label>
+              Pairing link
+              <input
+                aria-label="Pairing link"
+                value={pairLink}
+                onChange={(e) => setPairLink(e.target.value)}
+                autoCapitalize="none"
+              />
+            </label>
+            <button
+              disabled={!pairLink || busy}
+              onClick={() => void readInvite(pairLink)}
+            >
+              Read pairing link
+            </button>
+          </details>
+          {invite && (
+            <section className="pair-approval">
+              <h3>Connect to your PC?</h3>
+              <p>
+                This device will be able to read and edit this notebook. Sync
+                uses an encrypted connection.
+              </p>
+              <button
+                className="primary"
+                disabled={busy || !writer}
+                onClick={() => void acceptInvite()}
+              >
+                {busy ? "Connecting…" : "Approve and connect"}
+              </button>
+              <button disabled={busy} onClick={() => setInvite(undefined)}>
+                Cancel
+              </button>
+            </section>
+          )}
+          <details>
+            <summary>Advanced direct connection</summary>{" "}
+            <label>
+              Private PC address
+              <input
+                aria-label="PC endpoint"
+                autoCapitalize="none"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://your-private-pc-address"
+              />
+            </label>
+            <label>
+              One-time pairing code
+              <input
+                aria-label="Device pairing code"
+                autoCapitalize="none"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </label>
+            <button
+              disabled={busy || !code || !url}
+              onClick={() => void pair()}
+            >
+              Pair and sync
+            </button>
+          </details>
           <button
             disabled={!connection.current || busy}
             onClick={() => void sync()}
@@ -672,9 +822,9 @@ export default function TabletApp() {
             Chrome → menu → Install app.
           </p>
           <p>
-            Keep backups before clearing browser data. Your PC must be on for
-            sync. Offline writing and drawing do not need it. Conflicting edits
-            become separate copies.
+            Keep backups before clearing browser data. Your PC must be on and
+            both devices need internet for QR sync. Offline writing and drawing
+            do not need it. Conflicting edits become separate copies.
           </p>
         </section>
       )}

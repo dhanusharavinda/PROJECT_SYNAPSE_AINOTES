@@ -7,3 +7,5 @@ desktop-dist/
 .git/
 node_modules/
 *.log
+
+relay/
