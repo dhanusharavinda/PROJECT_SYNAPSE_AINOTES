@@ -6,7 +6,14 @@ export interface Note {
   context: string;
   group: string;
   layers: Record<Layer, string>;
-  links: { target: string; relation: Relation; reason: string }[];
+  body?: string;
+  parentId?: string | null;
+  links: {
+    target: string;
+    relation: Relation;
+    reason: string;
+    inline?: boolean;
+  }[];
   sources: string[];
   drawings: string[];
   status: "collected" | "explained" | "practiced";
@@ -41,7 +48,13 @@ export interface Proposal {
   target?: string;
   layers?: Record<Layer, string>;
   diagram?: {
-    nodes: { id: string; label: string }[];
+    title?: string;
+    type?: "flowchart" | "hierarchy" | "concept-map";
+    nodes: {
+      id: string;
+      label: string;
+      kind?: "step" | "decision" | "terminal" | "concept";
+    }[];
     edges: { from: string; to: string; label: string }[];
   };
   state: "pending" | "accepted" | "dismissed";

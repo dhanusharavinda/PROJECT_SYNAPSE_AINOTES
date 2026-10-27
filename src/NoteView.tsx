@@ -21,7 +21,9 @@ import {
 import type { Bootstrap, Note, Layer, Relation, Proposal } from "./types";
 import { api, fileUrl } from "./api";
 import { Modal, MD, Busy } from "./ui";
-import Editor from "./Editor";
+import Editor, { type EditorHandle } from "./Editor";
+import { bodyOf, lineage } from "./content";
+import DiagramPreview from "./DiagramPreview";
 const Drawing = lazy(() => import("./Drawing"));
 const layers: Layer[] = ["intuition", "technical", "implementation"];
 export default function NoteView({
@@ -39,16 +41,21 @@ export default function NoteView({
   refresh: () => Promise<void>;
   onOpen: (n: Note) => void;
   onPractice: (id: string) => void;
-  onNew: () => void;
+  onNew: (parentId?: string, onCreated?: (n: Note) => Promise<void>) => void;
   notify: (s: string) => void;
   onDirty: (d: boolean) => void;
 }) {
-  const [draft, setDraft] = useState(note);
-  const latest = useRef(note);
+  const initial = { ...note, body: bodyOf(note) };
+  const [draft, setDraft] = useState<Note>(initial);
+  const latest = useRef<Note>(initial);
+  const editorRef = useRef<EditorHandle>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadTail = useRef<Promise<unknown>>(Promise.resolve());
   const dirty = useRef(false);
   const saving = useRef(false);
+  const inFlight = useRef<Promise<Note> | null>(null);
   const [saveStatus, setSaveStatus] = useState("Saved locally");
-  const [layer, setLayer] = useState<Layer>("intuition");
+
   const [connections, setConnections] = useState(true);
   const [modal, setModal] = useState("");
   const [target, setTarget] = useState("");
@@ -58,6 +65,11 @@ export default function NoteView({
   const [drawingVersion, setDrawingVersion] = useState(0);
   const [pending, setPending] = useState("");
   const [proposal, setProposal] = useState<Proposal>();
+  const [diagramSelection, setDiagramSelection] = useState("");
+  const [diagramType, setDiagramType] = useState<
+    "flowchart" | "hierarchy" | "concept-map"
+  >("flowchart");
+  const [diagramNotes, setDiagramNotes] = useState<string[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [shareRole, setShareRole] = useState("viewer");
   const [shareLabel, setShareLabel] = useState("");
@@ -65,10 +77,13 @@ export default function NoteView({
   useEffect(() => {
     if (
       note.id !== latest.current.id ||
-      (!dirty.current && note.revision !== latest.current.revision)
+      (!dirty.current &&
+        note.revision >= latest.current.revision &&
+        (note.revision !== latest.current.revision ||
+          note.etag !== latest.current.etag))
     ) {
-      latest.current = note;
-      setDraft(note);
+      latest.current = { ...note, body: bodyOf(note) };
+      setDraft(latest.current);
       dirty.current = false;
       setSaveStatus("Saved locally");
     }
@@ -91,18 +106,30 @@ export default function NoteView({
     onDirty(true);
     setSaveStatus("Unsaved changes");
   }
-  async function save() {
+  async function save(): Promise<Note> {
+    if (inFlight.current) {
+      await inFlight.current;
+      return dirty.current ? save() : latest.current;
+    }
     if (!dirty.current) return latest.current;
-    if (saving.current)
-      throw new Error("A save is in progress. Try again in a moment.");
+    const task = persist();
+    inFlight.current = task;
+    try {
+      await task;
+    } finally {
+      inFlight.current = null;
+    }
+    return dirty.current ? save() : latest.current;
+  }
+  async function persist() {
     saving.current = true;
     const snapshot = latest.current;
     setSaveStatus("Saving...");
     try {
       const saved = await api<Note>("/notes/" + snapshot.id, snapshot, "PUT");
       if (latest.current === snapshot) {
-        latest.current = saved;
-        setDraft(saved);
+        latest.current = { ...saved, body: bodyOf(saved) };
+        setDraft(latest.current);
         dirty.current = false;
         onDirty(false);
         setSaveStatus("Saved locally");
@@ -166,21 +193,103 @@ export default function NoteView({
       setPending("");
     }
   }
+  function adopt(n: Note, body?: string) {
+    const edited = dirty.current ? latest.current : undefined;
+    latest.current = {
+      ...n,
+      ...(edited
+        ? {
+            title: edited.title,
+            context: edited.context,
+            group: edited.group,
+            parentId: edited.parentId,
+          }
+        : {}),
+      body: edited?.body ?? (body === undefined ? bodyOf(n) : body),
+    };
+    setDraft(latest.current);
+    dirty.current = !!edited;
+    onDirty(!!edited);
+    setSaveStatus(edited ? "Unsaved changes" : "Saved locally");
+  }
+  async function upload(file: File) {
+    uploadTail.current = uploadTail.current
+      .catch(() => {})
+      .then(async () => {
+        setPending("upload");
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const source = await api("/upload", form);
+          edit({
+            sources: [...new Set([...latest.current.sources, source.id])],
+          });
+          if (source.kind === "image")
+            editorRef.current?.insertImage(
+              "../attachments/" + source.file,
+              source.title,
+            );
+          else
+            editorRef.current?.insertFile(
+              "/files/attachments/" + source.file,
+              source.title,
+            );
+          await save();
+          await refresh();
+          notify(
+            source.kind === "image"
+              ? "Image added directly to your note."
+              : "File added. You can open its original from the link.",
+          );
+        } catch (e) {
+          notify((e as Error).message);
+        } finally {
+          setPending("");
+        }
+      });
+    await uploadTail.current;
+  }
   async function command(cmd: string) {
     if (cmd.startsWith("note:")) {
       const n = data.notes.find((n) => n.id === cmd.slice(5));
       if (n) action("navigate", async () => onOpen(n));
       return;
     }
+    if (cmd.startsWith("drawing:")) {
+      setDrawing(cmd.slice(8));
+      return;
+    }
+    editorRef.current?.capture();
     if (cmd === "link") setModal("link");
-    if (cmd === "concept") onNew();
+    if (cmd === "page" || cmd === "concept")
+      await action("page", async () =>
+        onNew(draft.id, async (n) => {
+          editorRef.current?.linkTo(n.id, n.title);
+          await save();
+        }),
+      );
     if (cmd === "draw")
-      action("drawing", async () => {
+      await action("drawing", async () => {
         const result = await api("/notes/" + draft.id + "/drawings", {});
+        adopt(result.note, latest.current.body!);
+        editorRef.current?.insertDrawing(result.id);
+        await save();
         setDrawing(result.id);
       });
-    if (cmd === "flowchart") setModal("diagram");
-    if (cmd === "image") setModal("attach");
+    if (cmd === "flowchart") {
+      setDiagramSelection(editorRef.current?.selectedText() || "");
+      setDiagramNotes([]);
+      setModal("diagram");
+    }
+    if (cmd === "image" || cmd === "file") {
+      if (fileInput.current) {
+        fileInput.current.accept =
+          cmd === "image"
+            ? ".png,.jpg,.jpeg,.webp"
+            : ".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.mp3,.wav,.m4a,.mp4,.webm,.ogg";
+        fileInput.current.click();
+      }
+    }
   }
   const outgoing = draft.links.map((l) => ({
     ...l,
@@ -202,7 +311,19 @@ export default function NoteView({
         <header className="note-top">
           <span className="breadcrumb">
             My notebook <ChevronRight size={13} />
-            {draft.group}
+            {lineage(draft, data.notes).map((ancestor) => (
+              <span key={ancestor.id} className="ancestor">
+                <button
+                  onClick={() =>
+                    action("navigate", async () => onOpen(ancestor))
+                  }
+                >
+                  {ancestor.title}
+                </button>
+                <ChevronRight size={13} />
+              </span>
+            ))}
+            <span>{draft.title}</span>
           </span>
           <div className="actions">
             <span
@@ -245,18 +366,19 @@ export default function NoteView({
         </header>
         <div className="note-content">
           <div className="note-meta">
-            <span className="eyebrow">CONCEPT NOTE</span>
             <span className={"pill status " + draft.status}>
               <i className={"status-dot " + draft.status} />
               {draft.status}
             </span>
           </div>
-          <input
-            className="note-title"
-            aria-label="Note title"
-            value={draft.title}
-            onChange={(e) => edit({ title: e.target.value })}
-          />
+          <h1 className="note-title-heading" aria-label={draft.title}>
+            <input
+              className="note-title"
+              aria-label="Note title"
+              value={draft.title}
+              onChange={(e) => edit({ title: e.target.value })}
+            />
+          </h1>
           <div className="context-row">
             <label>
               Meaning{" "}
@@ -281,110 +403,137 @@ export default function NoteView({
               </datalist>
             </label>
           </div>
-          <div className="depth-control">
-            <div className="depth-label">
-              <span>EXPLANATION DEPTH</span>
-              <button onClick={() => setModal("layers")}>
-                <Sparkles size={12} /> Draft layers
-              </button>
-            </div>
-            <input
-              aria-label="Explanation depth"
-              type="range"
-              min={0}
-              max={2}
-              step={1}
-              value={layers.indexOf(layer)}
-              onChange={(e) => setLayer(layers[Number(e.target.value)])}
-            />
-            <div className="depth-stops">
-              {layers.map((l) => (
-                <button
-                  key={l}
-                  className={layer === l ? "selected" : ""}
-                  onClick={() => setLayer(l)}
-                >
-                  {l === "intuition"
-                    ? "Intuition"
-                    : l === "technical"
-                      ? "Technical"
-                      : "Implementation"}
-                </button>
-              ))}
-            </div>
+          <div className="parent-picker">
+            <label>
+              Inside{" "}
+              <select
+                aria-label="Parent page"
+                value={draft.parentId || ""}
+                onChange={(e) => edit({ parentId: e.target.value || null })}
+              >
+                <option value="">My notebook</option>
+                {data.notes
+                  .filter(
+                    (n) =>
+                      n.id !== draft.id &&
+                      !lineage(n, data.notes).some((a) => a.id === draft.id),
+                  )
+                  .map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.title}
+                    </option>
+                  ))}
+              </select>
+            </label>
           </div>
-          <div className="section-label">
+          <div className="writing-hint">
             <span>
-              {layer === "intuition"
-                ? "IN MY WORDS"
-                : layer === "technical"
-                  ? "THE DETAILS"
-                  : "MAKE IT WORK"}
+              Write naturally. Select text and right-click to add a variant or
+              format it.
             </span>
-            <small>Editable Markdown · / for tools</small>
+            <button onClick={() => command("page")}>
+              <Plus size={12} />
+              Subpage
+            </button>
           </div>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              const files = [...(e.target.files || [])];
+              files.forEach((file) => void upload(file));
+              e.target.value = "";
+            }}
+          />
+          {pending && (
+            <div className="operation-status" role="status">
+              <Busy />
+              {pending === "ai"
+                ? "Generating a draft. It will open here when ready."
+                : pending === "upload"
+                  ? "Adding your file to the note..."
+                  : "Saving your changes..."}
+            </div>
+          )}
+          {suggestions
+            .filter((p) => p.kind === "diagram")
+            .map((p) => (
+              <button
+                className="ready-flow"
+                key={p.id}
+                onClick={() => setProposal(p)}
+              >
+                <Workflow size={15} />
+                Flowchart ready for review <ChevronRight size={14} />
+              </button>
+            ))}
           <Editor
-            value={draft.layers[layer]}
-            onChange={(value) =>
-              edit({ layers: { ...latest.current.layers, [layer]: value } })
-            }
+            ref={editorRef}
+            value={draft.body || ""}
+            onChange={(body) => edit({ body })}
             onCommand={command}
+            onUpload={upload}
           />
           <div className="inline-tools">
-            <button onClick={() => setModal("link")}>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => command("link")}
+            >
               <Link2 size={14} />
-              Connect a concept
+              Link a word
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => command("draw")}
-              disabled={pending === "drawing"}
+              disabled={!!pending}
             >
               <PenLine size={14} />
-              Add drawing
+              Draw here
             </button>
-            <button onClick={() => setModal("attach")}>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => command("flowchart")}
+            >
+              <Workflow size={14} />
+              Generate flowchart
+            </button>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => command("image")}
+            >
               <Plus size={14} />
-              Source or image
+              Add image
+            </button>
+            <button onClick={() => setModal("resources")}>
+              <FileText size={14} />
+              Reference material
             </button>
           </div>
-          {draft.drawings.length > 0 && (
-            <section className="drawings-section">
-              <div className="section-label">
-                <span>SKETCHES & FLOWS</span>
-                <button onClick={() => setModal("diagram")}>
-                  <Sparkles size={12} />
-                  Suggest diagram
-                </button>
-              </div>
-              {draft.drawings.map((id) => (
-                <button
-                  className="drawing-preview"
-                  key={id}
-                  onClick={() => setDrawing(id)}
-                >
-                  <img
-                    key={id + "-" + drawingVersion}
-                    src={
-                      fileUrl("drawings", id + ".svg") + "?v=" + drawingVersion
-                    }
-                    alt="Saved drawing preview"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                  />
-                  <span>
-                    <PenLine size={16} />
-                    Open editable drawing <ArrowUpRight size={14} />
-                  </span>
-                </button>
-              ))}
+          {data.notes.some((n) => n.parentId === draft.id) && (
+            <section className="child-pages">
+              <span className="section-label">Pages inside this page</span>
+              {data.notes
+                .filter((n) => n.parentId === draft.id)
+                .map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => action("navigate", async () => onOpen(n))}
+                  >
+                    <FileText size={14} />
+                    {n.title}
+                    <ArrowUpRight size={13} />
+                  </button>
+                ))}
             </section>
           )}
           <section className="note-sources">
             <details>
               <summary>
                 <FileText size={15} />
-                Sources <span className="count">{currentSources.length}</span>
+                Reference material{" "}
+                <span className="count">{currentSources.length}</span>
               </summary>
               {currentSources.map((s) => (
                 <div className="source-row" key={s.id}>
@@ -410,15 +559,16 @@ export default function NoteView({
               ))}
               {!currentSources.length && (
                 <p className="muted">
-                  Attach a source from the Inbox. Your explanation can stand on
-                  its own.
+                  Original files and web links you used while learning. Adding
+                  them is optional. Upload directly from the note or choose an
+                  item already in Inbox.
                 </p>
               )}
             </details>
           </section>
           <div className="practice-strip">
             <div>
-              <span className="eyebrow">MAKE IT STICK</span>
+              <span className="section-label">Make it stick</span>
               <h3>Could you explain this without looking?</h3>
               <p>
                 {lastReview
@@ -488,7 +638,7 @@ export default function NoteView({
           </header>
           <p className="muted small">One idea, many useful connections.</p>
           <div className="connection-section">
-            <span className="eyebrow">LINKS FROM THIS NOTE</span>
+            <span className="section-label">Links from this note</span>
             {outgoing.map((l) => (
               <div className="connection-item" key={l.target}>
                 <button onClick={() => l.note && onOpen(l.note)}>
@@ -505,11 +655,12 @@ export default function NoteView({
                   className="icon"
                   title="Remove connection"
                   aria-label={"Remove link to " + l.note?.title}
-                  onClick={() =>
+                  onClick={() => {
                     edit({
                       links: draft.links.filter((x) => x.target !== l.target),
-                    })
-                  }
+                    });
+                    editorRef.current?.unlinkTo(l.target);
+                  }}
                 >
                   <Unlink size={12} />
                 </button>
@@ -521,7 +672,7 @@ export default function NoteView({
             </button>
           </div>
           <div className="connection-section">
-            <span className="eyebrow">LINKED FROM</span>
+            <span className="section-label">Linked from</span>
             {incoming.map((n) => (
               <button className="backlink" key={n.id} onClick={() => onOpen(n)}>
                 <Link2 size={14} />
@@ -535,18 +686,16 @@ export default function NoteView({
               </p>
             )}
           </div>
-          <div className="ai-card">
-            <Sparkles size={18} />
-            <h4>A second pair of eyes</h4>
-            <p>Find a useful connection. You decide whether it belongs.</p>
+          <div className="connection-help">
+            <h4>Find a connection</h4>
+            <p>Request links to review with your chosen AI provider.</p>
             <button onClick={() => setModal("links")}>
               Suggest connections
             </button>
-            <small>Uses the provider in Settings.</small>
           </div>
           {suggestions.length > 0 && (
             <div className="connection-section">
-              <span className="eyebrow">WAITING FOR YOUR REVIEW</span>
+              <span className="section-label">Waiting for your review</span>
               {suggestions.map((p) => (
                 <button
                   className="proposal-chip"
@@ -592,7 +741,9 @@ export default function NoteView({
               </div>
             ))}
           <div className="quiet-note">
-            <span>↗</span>
+            <span>
+              <ArrowUpRight size={16} />
+            </span>
             <p>
               A link is a question worth asking:{" "}
               <em>how do these ideas connect?</em>
@@ -612,14 +763,14 @@ export default function NoteView({
           </p>
           <div className="compare-grid">
             <div>
-              <span className="eyebrow">YOUR UNSAVED DRAFT</span>
+              <span className="section-label">Your unsaved draft</span>
               <h3>{draft.title}</h3>
-              <MD text={draft.layers[layer]} />
+              <MD text={draft.body || bodyOf(draft)} />
             </div>
             <div>
-              <span className="eyebrow">LATEST SAVED NOTE</span>
+              <span className="section-label">Latest saved note</span>
               <h3>{conflict.title}</h3>
-              <MD text={conflict.layers[layer]} />
+              <MD text={conflict.body || bodyOf(conflict)} />
             </div>
           </div>
           <footer className="dialog-actions">
@@ -727,20 +878,17 @@ export default function NoteView({
             />
           </label>
           <footer className="dialog-actions">
-            <button onClick={onNew}>Create a new concept</button>
+            <button onClick={() => onNew(draft.id)}>
+              Create a new concept
+            </button>
             <button
               className="primary"
               disabled={!target}
               onClick={() => {
-                edit({
-                  links: [...draft.links, { target, relation, reason }],
-                  layers: {
-                    ...draft.layers,
-                    [layer]:
-                      draft.layers[layer] +
-                      `\n\nSee also: [${data.notes.find((n) => n.id === target)?.title}](${target}.md).`,
-                  },
-                });
+                const page = data.notes.find((n) => n.id === target);
+                if (!page) return;
+                edit({ links: [...draft.links, { target, relation, reason }] });
+                editorRef.current?.linkTo(target, page.title);
                 setModal("");
                 setTarget("");
                 setReason("");
@@ -758,7 +906,7 @@ export default function NoteView({
               ? "Draft explanation layers"
               : modal === "links"
                 ? "Suggest connections"
-                : "Suggest an editable flowchart"
+                : "Create a diagram"
           }
           onClose={() => setModal("")}
         >
@@ -766,7 +914,9 @@ export default function NoteView({
             This sends{" "}
             {modal === "links"
               ? "this note and candidate note summaries"
-              : "this note"}{" "}
+              : modal === "diagram" && diagramSelection
+                ? "your selected text and any additional notes"
+                : "this note"}{" "}
             to{" "}
             <strong>
               {data.config.provider === "ollama"
@@ -781,6 +931,72 @@ export default function NoteView({
             Nothing is inserted until you review and accept the draft. Existing
             explanations remain saved in history.
           </p>
+          {modal === "diagram" && (
+            <div className="diagram-options">
+              <label>
+                Diagram type
+                <select
+                  aria-label="Diagram type"
+                  value={diagramType}
+                  onChange={(e) =>
+                    setDiagramType(e.target.value as typeof diagramType)
+                  }
+                >
+                  <option value="flowchart">
+                    Flowchart: steps and decisions
+                  </option>
+                  <option value="hierarchy">Hierarchy: parts and types</option>
+                  <option value="concept-map">
+                    Concept map: relationships
+                  </option>
+                </select>
+              </label>
+              {diagramSelection ? (
+                <>
+                  <p>Using selected text</p>
+                  <blockquote className="selection-excerpt">
+                    {diagramSelection}
+                  </blockquote>
+                  <button onClick={() => setDiagramSelection("")}>
+                    Use the whole note instead
+                  </button>
+                </>
+              ) : (
+                <p>
+                  Using the current note: <strong>{draft.title}</strong>
+                </p>
+              )}
+              <details>
+                <summary>Include other notes (optional)</summary>
+                {data.notes
+                  .filter((n) => n.id !== draft.id)
+                  .map((n) => (
+                    <label className="check-row" key={n.id}>
+                      <input
+                        type="checkbox"
+                        checked={diagramNotes.includes(n.id)}
+                        disabled={
+                          !diagramNotes.includes(n.id) &&
+                          diagramNotes.length >= 4
+                        }
+                        onChange={(e) =>
+                          setDiagramNotes((ids) =>
+                            e.target.checked
+                              ? [...ids, n.id]
+                              : ids.filter((id) => id !== n.id),
+                          )
+                        }
+                      />
+                      {n.title}
+                    </label>
+                  ))}
+              </details>
+              <p className="small muted">
+                Stock Diagram Design style. Up to 9 ideas per drawing. The draft
+                stays separate until you insert it.
+              </p>
+            </div>
+          )}
           <footer className="dialog-actions">
             <button onClick={() => setModal("")}>Cancel</button>
             <button
@@ -788,11 +1004,22 @@ export default function NoteView({
               disabled={!!pending}
               onClick={() =>
                 action("ai", async () => {
-                  await api("/notes/" + draft.id + "/ai", { kind: modal });
-                  setModal("");
-                  notify(
-                    "Draft ready in Connections. Review it before accepting.",
+                  const result = await api<Proposal[]>(
+                    "/notes/" + draft.id + "/ai",
+                    {
+                      kind: modal,
+                      ...(modal === "diagram"
+                        ? {
+                            selection: diagramSelection,
+                            noteIds: diagramNotes,
+                            diagramType,
+                          }
+                        : {}),
+                    },
                   );
+                  setModal("");
+                  if (result.length) setProposal(result[0]);
+                  else notify("No new connections were suggested.");
                 })
               }
             >
@@ -801,11 +1028,24 @@ export default function NoteView({
           </footer>
         </Modal>
       )}
-      {modal === "attach" && (
-        <Modal title="Attach a source" onClose={() => setModal("")}>
-          <p className="muted">
-            Capture files in Inbox first, then attach them to a concept. Images
-            can also be inserted into this explanation.
+      {modal === "resources" && (
+        <Modal
+          title="Add an image, file, or web reference"
+          onClose={() => setModal("")}
+        >
+          <p>
+            Reference material means the original PDF, image, video, or web link
+            behind an explanation. It is optional. You can write notes without
+            adding any.
+          </p>
+          <div className="actions">
+            <button className="primary" onClick={() => command("image")}>
+              Upload image
+            </button>
+            <button onClick={() => command("file")}>Upload PDF or file</button>
+          </div>
+          <p className="muted small">
+            Already captured something in Inbox? Choose it below.
           </p>
           {data.sources.map((s) => (
             <div className="attach-row" key={s.id}>
@@ -814,37 +1054,27 @@ export default function NoteView({
                 <small>{s.kind}</small>
               </span>
               <button
-                disabled={draft.sources.includes(s.id)}
                 onClick={() => {
-                  edit({ sources: [...draft.sources, s.id] });
-                  notify("Source attached.");
+                  edit({
+                    sources: [...new Set([...latest.current.sources, s.id])],
+                  });
+                  if (s.kind === "image" && s.file)
+                    editorRef.current?.insertImage(
+                      "../attachments/" + s.file,
+                      s.title,
+                    );
+                  else
+                    editorRef.current?.insertFile(
+                      s.file ? "/files/attachments/" + s.file : s.url || "#",
+                      s.title,
+                    );
+                  setModal("");
                 }}
               >
-                Attach
+                {s.kind === "image" ? "Insert image" : "Add reference link"}
               </button>
-              {s.kind === "image" && s.file && (
-                <button
-                  onClick={() => {
-                    edit({
-                      layers: {
-                        ...draft.layers,
-                        [layer]:
-                          draft.layers[layer] +
-                          `\n\n![${s.title.replace(/[\[\]]/g, "")}](../attachments/${s.file!})`,
-                      },
-                      sources: [...new Set([...draft.sources, s.id])],
-                    });
-                    setModal("");
-                  }}
-                >
-                  Insert image
-                </button>
-              )}
             </div>
           ))}
-          {!data.sources.length && (
-            <p>No sources yet. Open Inbox to upload a file or paste a link.</p>
-          )}
         </Modal>
       )}
       {modal === "share" && (
@@ -988,11 +1218,11 @@ export default function NoteView({
           {proposal.content && (
             <div className="compare-grid">
               <div>
-                <span className="eyebrow">EXISTING TECHNICAL NOTE</span>
-                <MD text={draft.layers.technical} />
+                <h4>Current note</h4>
+                <MD text={bodyOf(draft)} />
               </div>
               <div>
-                <span className="eyebrow">PROPOSED ADDITION</span>
+                <h4>Proposed addition</h4>
                 <MD text={proposal.content} />
               </div>
             </div>
@@ -1005,18 +1235,37 @@ export default function NoteView({
               </section>
             ))}
           {proposal.diagram && (
-            <div className="diagram-draft">
-              {proposal.diagram.nodes.map((n) => (
-                <span key={n.id}>{n.label}</span>
-              ))}
-              {proposal.diagram.edges.map((e, i) => (
-                <p key={i}>
-                  {proposal.diagram!.nodes.find((n) => n.id === e.from)?.label}{" "}
-                  → {proposal.diagram!.nodes.find((n) => n.id === e.to)?.label}{" "}
-                  <small>{e.label}</small>
+            <>
+              <DiagramPreview diagram={proposal.diagram} />
+              <details>
+                <summary>Check the relationships</summary>
+                <div className="diagram-draft">
+                  {proposal.diagram.nodes.map((n) => (
+                    <span key={n.id}>{n.label}</span>
+                  ))}
+                  {proposal.diagram.edges.map((e, i) => (
+                    <p key={i}>
+                      {
+                        proposal.diagram!.nodes.find((n) => n.id === e.from)
+                          ?.label
+                      }{" "}
+                      →{" "}
+                      {
+                        proposal.diagram!.nodes.find((n) => n.id === e.to)
+                          ?.label
+                      }{" "}
+                      <small>{e.label}</small>
+                    </p>
+                  ))}
+                </div>
+              </details>
+              {proposal.baseEtag && proposal.baseEtag !== draft.etag && (
+                <p className="coverage">
+                  This drawing was drafted from an earlier version. Inserting it
+                  preserves your current writing. Check that it still matches.
                 </p>
-              ))}
-            </div>
+              )}
+            </>
           )}
           <footer className="dialog-actions">
             <button
@@ -1034,7 +1283,36 @@ export default function NoteView({
               disabled={!!pending}
               onClick={() =>
                 action("accept", async () => {
-                  await api("/proposals/" + proposal.id, { action: "accept" });
+                  const result = await api("/proposals/" + proposal.id, {
+                    action: "accept",
+                    allowStaleDiagram: proposal.kind === "diagram",
+                  });
+                  if (result.note)
+                    adopt(
+                      result.note,
+                      proposal.kind === "diagram" || proposal.kind === "link"
+                        ? latest.current.body!
+                        : undefined,
+                    );
+                  if (proposal.kind === "diagram" && result.drawingId) {
+                    editorRef.current?.insertDrawing(result.drawingId);
+                    await save();
+                    notify(
+                      "Flowchart inserted into your note. Double-click it to customize.",
+                    );
+                  }
+                  if (proposal.kind === "link" && proposal.target) {
+                    const targetPage = data.notes.find(
+                      (n) => n.id === proposal.target,
+                    );
+                    if (targetPage) {
+                      editorRef.current?.linkTo(
+                        targetPage.id,
+                        targetPage.title,
+                      );
+                      await save();
+                    }
+                  }
                   setProposal(undefined);
                 })
               }

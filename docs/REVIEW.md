@@ -1,5 +1,19 @@
 # Build review
 
+## Current revision: 27 October 2026
+
+The editor now supports freeform writing, optional definition variants, contextual formatting, inline transparent drawings, selected-text diagram approval, flexible tables, images, subpages, and lineage. The graph adds focused exploration, a directional relationship ledger, and explicit prerequisite paths. See [Current editor and graph](EDITOR_V2.md) for usage and current boundaries.
+
+83 automated tests, strict TypeScript, and the production build passed. Regression coverage includes saved empty paragraphs after drawings, stale refreshes, inline link removal, variants, table operations, portable attachment URLs, origin-specific pairing, scoped permissions, and diagram approval. The nonfatal drawing-library chunk warning remains.
+
+Live checks verified local Ollama diagram generation, approval before insertion, real transparent SVG plus editable scenes, conversational script generation, Hermes's actual speech function and configured Edge voice, and seekable Opus audio. Browser checks verified image insertion, generated diagram review and acceptance, editing a saved canvas, expandable variants, a table growing to 4 by 4, and writing after a drawing across autosave. Responsive graph captures cover desktop, tablet, phone, and dark mode. Code copying displayed success feedback; browser clipboard inspection did not expose the native clipboard contents.
+
+Vercel serves a static companion interface. Notes and AI services remain on the local computer. Pairing is limited to an exact HTTPS origin, expires within 12 hours, and is revoked by server restart. Hosting does not add cross-device synchronization. Edge speech uses Microsoft's online service, while the text model remains local. Cloud inference with OpenAI was not exercised. Deployment and Telegram delivery are recorded separately after their actual receipts.
+
+The dated review below describes the initial build and is retained as history. Its fixed-layer and Windows-only speech descriptions are superseded by this revision.
+
+Design process limitation: this refinement preserved the user's confirmed identity but skipped Impeccable's separate concept-roll gate and did not solicit its QUALITY BAR card. Taste's recorded direction seed does not replace that missing provenance. Independent finish review found contrast defects in dark graph labels and definition-variant controls; these were corrected and recaptured for a verdict pass.
+
 Verified on 26 October 2026 by desktop Codex. This is a record of checks, not a guarantee that software cannot fail.
 
 ## Delivered

@@ -81,7 +81,7 @@ describe("student-facing regression checks", () => {
     expect(screen.queryByText("Unsaved changes")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Knowledge Graph" }));
     expect(
-      await screen.findByRole("heading", { name: "Knowledge Graph." }),
+      await screen.findByRole("heading", { name: "Knowledge Graph" }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("dialog", { name: "Your draft has unsaved changes" }),

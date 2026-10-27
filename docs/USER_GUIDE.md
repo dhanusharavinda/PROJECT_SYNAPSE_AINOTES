@@ -1,5 +1,7 @@
 # Synapse user guide
 
+Read [Current editor and graph](EDITOR_V2.md) for the current workflow. It supersedes the original fixed slider and separate drawing-panel descriptions below. Capture, backup, recall, and access limitations still apply.
+
 ## What it does
 
 Synapse is a local notebook for understanding AI concepts and practicing interview explanations. Notes are the main workspace. Knowledge Graph arranges the same notes into topic groups with approved connections. Inbox holds sources before they become note changes. Review asks you to recall before revealing. Audio Studio creates revision scripts and real audio files.

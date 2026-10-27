@@ -2,6 +2,10 @@
 
 A local study notebook with intentional links, an organized Knowledge Graph, editable drawings, source capture, recall practice, and revision audio.
 
+The current editor includes contextual formatting, optional definition variants, inline transparent drawings, selected-text diagrams, flexible tables, image insertion, subpages, breadcrumbs, and light/dark themes. See [Current editor and graph](docs/EDITOR_V2.md).
+
+Vercel hosts the frontend companion. Your local service must be running and paired with the deployed site on the same computer. The vault is never deployed. Run `Setup Hermes voice.cmd` once to prepare the isolated compatibility dependency for Hermes's existing speech pipeline.
+
 ## Start
 
 1. Install Node.js 22 or later.

@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { api, fileUrl } from "./api";
+import { bodyOf } from "./content";
 import { MD, Busy } from "./ui";
 import type { Note, Layer } from "./types";
+import BrandMark from "./BrandMark";
 export default function Shared({ token }: { token: string }) {
   const [data, setData] = useState<any>();
   const [error, setError] = useState("");
   const [layers, setLayers] = useState<Note["layers"]>();
+  const [body, setBody] = useState("");
   const [author, setAuthor] = useState("");
   const [text, setText] = useState("");
   const [message, setMessage] = useState("");
@@ -15,6 +18,7 @@ export default function Shared({ token }: { token: string }) {
       const d = await api("/shared/" + token);
       setData(d);
       setLayers(d.note.layers);
+      setBody(bodyOf(d.note));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -40,34 +44,59 @@ export default function Shared({ token }: { token: string }) {
     <div className="share-shell">
       <header>
         <a className="brand" href="/">
-          ✳ Synapse
+          <BrandMark /> Synapse
         </a>
         <span className="pill">{data.share.role} access</span>
       </header>
-      <p className="eyebrow">SHARED CONCEPT NOTE</p>
+
       <h1>{data.note.title}</h1>
       <p className="muted">Meaning: {data.note.context}</p>
-      {(["intuition", "technical", "implementation"] as Layer[]).map((l) => (
-        <section key={l}>
-          <h3>{l}</h3>
+      {data.note.body !== undefined ? (
+        <section>
+          <h3>Note</h3>
           {data.share.role === "editor" ? (
-            <textarea
-              aria-label={"Shared " + l}
-              value={layers[l]}
-              onChange={(e) => setLayers({ ...layers, [l]: e.target.value })}
-            />
+            <>
+              <label>
+                Note Markdown
+                <textarea
+                  className="shared-body"
+                  aria-label="Shared note Markdown"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+              </label>
+              <details>
+                <summary>Preview</summary>
+                <MD text={body} share={token} />
+              </details>
+            </>
           ) : (
-            <MD
-              text={layers[l]
-                .replaceAll("../attachments/", "/files/attachments/")
-                .replace(
-                  /(\/files\/attachments\/[^\s)]+)/g,
-                  "$1?share=" + token,
-                )}
-            />
+            <MD text={body} share={token} />
           )}
         </section>
-      ))}
+      ) : (
+        (["intuition", "technical", "implementation"] as Layer[]).map((l) => (
+          <section key={l}>
+            <h3>{l}</h3>
+            {data.share.role === "editor" ? (
+              <textarea
+                aria-label={"Shared " + l}
+                value={layers[l]}
+                onChange={(e) => setLayers({ ...layers, [l]: e.target.value })}
+              />
+            ) : (
+              <MD
+                text={layers[l]
+                  .replaceAll("../attachments/", "/files/attachments/")
+                  .replace(
+                    /(\/files\/attachments\/[^\s)]+)/g,
+                    "$1?share=" + token,
+                  )}
+              />
+            )}
+          </section>
+        ))
+      )}
       {data.share.role === "editor" && (
         <button
           className="primary"
@@ -77,7 +106,11 @@ export default function Shared({ token }: { token: string }) {
             try {
               await api(
                 "/shared/" + token,
-                { layers, revision: data.note.revision, etag: data.note.etag },
+                {
+                  ...(data.note.body !== undefined ? { body } : { layers }),
+                  revision: data.note.revision,
+                  etag: data.note.etag,
+                },
                 "PUT",
               );
               await load();
@@ -89,10 +122,10 @@ export default function Shared({ token }: { token: string }) {
             }
           }}
         >
-          Save shared explanation
+          Save shared note
         </button>
       )}
-      {data.note.drawings.length > 0 && (
+      {data.note.body === undefined && data.note.drawings.length > 0 && (
         <section>
           <h3>Sketches and flows</h3>
           {data.note.drawings.map((id: string) => (

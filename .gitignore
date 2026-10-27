@@ -6,3 +6,7 @@ work/
 *.log
 
 public/excalidraw/
+.vercel/
+.taste-skill/
+.impeccable/review/
+.impeccable/questions/

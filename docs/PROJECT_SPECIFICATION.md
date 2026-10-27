@@ -1,5 +1,7 @@
 # Synapse: local study notebook
 
+Current revision, 27 October 2026: [Current editor and graph](EDITOR_V2.md) supersedes fixed explanation layers and offline-only speech descriptions below. Notes now have a normal Markdown body, optional expandable variants, inline drawings, and a paired Vercel frontend. The original agreement remains as implementation history.
+
 ## Plain-language explanation
 
 Synapse is a notebook for learning AI and preparing for interviews. Write an explanation, connect it to another note, sketch a flow, then practice recalling it. Your notes are ordinary Markdown files in a local folder. The Knowledge Graph is another view of those same files. AI suggestions are drafts that you choose to accept or reject.

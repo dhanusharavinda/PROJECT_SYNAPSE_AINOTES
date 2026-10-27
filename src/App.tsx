@@ -14,19 +14,26 @@ import {
   PanelLeftClose,
   X,
   RefreshCw,
+  Moon,
+  Sun,
 } from "lucide-react";
+import { lineage } from "./content";
 import type { Bootstrap, Note } from "./types";
-import { api } from "./api";
+import { api, hosted, pairingToken } from "./api";
+import Connect from "./Connect";
 import { Modal, Busy, Empty } from "./ui";
 import NoteView from "./NoteView";
 import Graph from "./Graph";
 import { Inbox, Review, Audio } from "./StudyViews";
 import Settings from "./Settings";
 import Shared from "./Shared";
+import BrandMark from "./BrandMark";
 type View = "notes" | "graph" | "inbox" | "review" | "audio" | "settings";
 export default function App() {
   const [data, setData] = useState<Bootstrap>();
+  const refreshVersion = useRef(0);
   const [error, setError] = useState("");
+  const [connected, setConnected] = useState(!hosted || !!pairingToken());
   const [view, setView] = useState<View>(() => {
     const v = new URLSearchParams(location.search).get("view");
     return ["notes", "graph", "inbox", "review", "audio", "settings"].includes(
@@ -42,11 +49,44 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [create, setCreate] = useState(false);
+  const [creationParent, setCreationParent] = useState<string | null>(null);
+  const createdCallback = useRef<((n: Note) => Promise<void>) | undefined>(
+    undefined,
+  );
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    try {
+      return localStorage.getItem("synapse-theme") === "dark"
+        ? "dark"
+        : "light";
+    } catch {
+      return "light";
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("synapse-theme", theme);
+    window.dispatchEvent(new Event("synapse:theme"));
+  }, [theme]);
+  function openCreate(
+    parentId?: string,
+    callback?: (n: Note) => Promise<void>,
+  ) {
+    setCreationParent(parentId || null);
+    createdCallback.current = callback;
+    setCreate(true);
+  }
   const [newTitle, setNewTitle] = useState("");
   const [newContext, setNewContext] = useState("Machine learning");
   const [newGroup, setNewGroup] = useState("Unsorted");
   const [practice, setPractice] = useState<string>();
   const [sidebar, setSidebar] = useState(window.innerWidth >= 900);
+  useEffect(() => {
+    const resize = () => {
+      if (window.innerWidth < 900) setSidebar(false);
+    };
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   const dirty = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -59,8 +99,10 @@ export default function App() {
     timer.current = setTimeout(() => setToast(""), 7000);
   }
   async function refresh() {
+    const requestVersion = ++refreshVersion.current;
     try {
       const d = await api<Bootstrap>("/bootstrap");
+      if (requestVersion !== refreshVersion.current) return;
       setData(d);
       setSelected((id) =>
         d.notes.some((n) => n.id === id)
@@ -71,11 +113,12 @@ export default function App() {
       );
       setError("");
     } catch (e) {
+      if (requestVersion !== refreshVersion.current) return;
       setError((e as Error).message);
     }
   }
   useEffect(() => {
-    if (!shared) refresh();
+    if (!shared && connected) refresh();
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
@@ -84,7 +127,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, []);
+  }, [connected]);
   useEffect(() => {
     if (!data || shared) return;
     const params = new URLSearchParams();
@@ -106,11 +149,12 @@ export default function App() {
     if (n) setSelected(n.id);
     if (innerWidth < 900) setSidebar(false);
   }
+  if (!connected) return <Connect onConnected={() => setConnected(true)} />;
   if (shared) return <Shared token={shared} />;
   if (!data)
     return (
       <div className="loading-overlay">
-        <span className="brand-mark">✳</span>
+        <BrandMark />
         <h2>
           {error ? "Notebook unavailable" : "Opening your local notebook"}
         </h2>
@@ -121,6 +165,16 @@ export default function App() {
               <RefreshCw size={14} />
               Retry
             </button>
+            {hosted && (
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem("synapse-pairing");
+                  setConnected(false);
+                }}
+              >
+                Reconnect local notebook
+              </button>
+            )}
           </>
         ) : (
           <Busy />
@@ -131,7 +185,7 @@ export default function App() {
   const filtered = data.notes.filter(
     (n) =>
       !query ||
-      [n.title, n.context, n.group, ...Object.values(n.layers)]
+      [n.title, n.context, n.group, n.body || "", ...Object.values(n.layers)]
         .join(" ")
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -153,7 +207,8 @@ export default function App() {
               navigate("notes");
             }}
           >
-            <span className="brand-mark">✳</span>synapse
+            <BrandMark />
+            synapse
             <span className="brand-period">.</span>
           </a>
           <button
@@ -165,7 +220,9 @@ export default function App() {
           </button>
         </div>
         <div className="notebook-picker">
-          <div className="notebook-avatar">AI</div>
+          <div className="notebook-avatar">
+            <BookOpen size={16} />
+          </div>
           <div>
             <strong>My learning space</strong>
             <small>Local notebook</small>
@@ -226,7 +283,7 @@ export default function App() {
             className="icon"
             title="New concept"
             aria-label="New concept"
-            onClick={() => setCreate(true)}
+            onClick={() => openCreate()}
           >
             <Plus size={16} />
           </button>
@@ -248,11 +305,21 @@ export default function App() {
             <p className="muted small">No matching concepts.</p>
           )}
         </div>
-        <button className="new-note-button" onClick={() => setCreate(true)}>
+        <button className="new-note-button" onClick={() => openCreate()}>
           <Plus size={15} />
           New concept
         </button>
         <div className="sidebar-bottom">
+          <button
+            className="theme-switch"
+            aria-label={
+              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+            }
+            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+          >
+            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}{" "}
+            {theme === "light" ? "Dark mode" : "Light mode"}
+          </button>
           <div className="local-status">
             <span className="live-dot" />
             <span>
@@ -269,15 +336,18 @@ export default function App() {
           </button>
         </div>
       </aside>
-      <main className="main-area">
+      <main className={"main-area " + (!sidebar ? "with-nav-handle" : "")}>
         {!sidebar && (
-          <button
-            className="show-sidebar"
-            aria-label="Show sidebar"
-            onClick={() => setSidebar(true)}
-          >
-            <Menu size={18} />
-          </button>
+          <div className="compact-nav">
+            <button
+              className="show-sidebar"
+              aria-label="Show sidebar"
+              onClick={() => setSidebar(true)}
+            >
+              <Menu size={18} />
+            </button>
+            <span>Synapse</span>
+          </div>
         )}
         {error && (
           <div className="error-banner" role="alert">
@@ -297,7 +367,7 @@ export default function App() {
                 setPractice(id);
                 navigate("review");
               }}
-              onNew={() => setCreate(true)}
+              onNew={openCreate}
               notify={notify}
               onDirty={(d) => (dirty.current = d)}
             />
@@ -306,7 +376,7 @@ export default function App() {
               title="One idea is a good beginning"
               text="Create a concept note. Explain it simply, add an example, and connect it when the relationship makes sense."
             >
-              <button className="primary" onClick={() => setCreate(true)}>
+              <button className="primary" onClick={() => openCreate()}>
                 <Plus size={15} />
                 Create a concept
               </button>
@@ -391,7 +461,11 @@ export default function App() {
       )}
       {create && (
         <Modal
-          title="Give an idea its own space"
+          title={
+            creationParent
+              ? "Add a page inside this page"
+              : "Give an idea its own space"
+          }
           onClose={() => setCreate(false)}
         >
           <p className="muted">
@@ -430,7 +504,10 @@ export default function App() {
                   title: newTitle,
                   context: newContext,
                   group: newGroup,
+                  body: "",
+                  parentId: creationParent,
                 });
+                if (createdCallback.current) await createdCallback.current(n);
                 await refresh();
                 setCreate(false);
                 setNewTitle("");

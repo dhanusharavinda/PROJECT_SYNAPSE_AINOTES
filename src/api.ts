@@ -1,12 +1,39 @@
+export const hosted = !["localhost", "127.0.0.1", "[::1]"].includes(
+  location.hostname,
+);
+export const companion = hosted ? "http://127.0.0.1:4317" : "";
+export function pairingToken() {
+  try {
+    return sessionStorage.getItem("synapse-pairing") || "";
+  } catch {
+    return "";
+  }
+}
+export function mediaUrl(url: string) {
+  if (!hosted || !url.startsWith("/files/")) return url;
+  return (
+    companion +
+    url +
+    (url.includes("?") ? "&" : "?") +
+    "access=" +
+    encodeURIComponent(pairingToken())
+  );
+}
 export async function api<T = any>(
   url: string,
   body?: unknown,
   method?: string,
 ): Promise<T> {
-  const response = await fetch("/api" + url, {
+  const response = await fetch(companion + "/api" + url, {
     method: method || (body === undefined ? "GET" : "POST"),
-    headers:
-      body instanceof FormData ? {} : { "Content-Type": "application/json" },
+    headers: {
+      ...(body instanceof FormData
+        ? {}
+        : { "Content-Type": "application/json" }),
+      ...(hosted && pairingToken()
+        ? { Authorization: "Bearer " + pairingToken() }
+        : {}),
+    },
     body:
       body === undefined
         ? undefined
@@ -23,5 +50,7 @@ export async function api<T = any>(
   return response.json();
 }
 export function fileUrl(folder: string, file: string, share?: string) {
-  return `/files/${folder}/${encodeURIComponent(file)}${share ? "?share=" + encodeURIComponent(share) : ""}`;
+  return mediaUrl(
+    `/files/${folder}/${encodeURIComponent(file)}${share ? "?share=" + encodeURIComponent(share) : ""}`,
+  );
 }

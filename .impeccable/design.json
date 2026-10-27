@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-27T11:27:06.569130+00:00",
+  "title": "Design System: Synapse",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(0.150 0.0138 163.32)",
+          "oklch(0.260 0.0240 163.32)",
+          "oklch(0.380 0.0323 163.32)",
+          "oklch(0.500 0.0323 163.32)",
+          "oklch(0.620 0.0323 163.32)",
+          "oklch(0.740 0.0323 163.32)",
+          "oklch(0.860 0.0181 163.32)",
+          "oklch(0.950 0.0065 163.32)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(0.150 0.0094 157.38)",
+          "oklch(0.260 0.0163 157.38)",
+          "oklch(0.380 0.0219 157.38)",
+          "oklch(0.500 0.0219 157.38)",
+          "oklch(0.620 0.0219 157.38)",
+          "oklch(0.740 0.0219 157.38)",
+          "oklch(0.860 0.0123 157.38)",
+          "oklch(0.950 0.0044 157.38)"
+        ]
+      },
+      "green": {
+        "role": "primary",
+        "displayName": "Green",
+        "tonalRamp": [
+          "oklch(0.150 0.0248 169.96)",
+          "oklch(0.260 0.0430 169.96)",
+          "oklch(0.380 0.0579 169.96)",
+          "oklch(0.500 0.0579 169.96)",
+          "oklch(0.620 0.0579 169.96)",
+          "oklch(0.740 0.0579 169.96)",
+          "oklch(0.860 0.0324 169.96)",
+          "oklch(0.950 0.0116 169.96)"
+        ]
+      },
+      "pale": {
+        "role": "primary",
+        "displayName": "Pale",
+        "tonalRamp": [
+          "oklch(0.150 0.0056 141.81)",
+          "oklch(0.260 0.0096 141.81)",
+          "oklch(0.380 0.0130 141.81)",
+          "oklch(0.500 0.0130 141.81)",
+          "oklch(0.620 0.0130 141.81)",
+          "oklch(0.740 0.0130 141.81)",
+          "oklch(0.860 0.0073 141.81)",
+          "oklch(0.950 0.0026 141.81)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.260 0.0000 0.00)",
+          "oklch(0.380 0.0000 0.00)",
+          "oklch(0.500 0.0000 0.00)",
+          "oklch(0.620 0.0000 0.00)",
+          "oklch(0.740 0.0000 0.00)",
+          "oklch(0.860 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(0.150 0.0017 121.56)",
+          "oklch(0.260 0.0030 121.56)",
+          "oklch(0.380 0.0041 121.56)",
+          "oklch(0.500 0.0041 121.56)",
+          "oklch(0.620 0.0041 121.56)",
+          "oklch(0.740 0.0041 121.56)",
+          "oklch(0.860 0.0023 121.56)",
+          "oklch(0.950 0.0008 121.56)"
+        ]
+      },
+      "frame": {
+        "role": "neutral",
+        "displayName": "Frame",
+        "tonalRamp": [
+          "oklch(0.150 0.0026 137.77)",
+          "oklch(0.260 0.0046 137.77)",
+          "oklch(0.380 0.0062 137.77)",
+          "oklch(0.500 0.0062 137.77)",
+          "oklch(0.620 0.0062 137.77)",
+          "oklch(0.740 0.0062 137.77)",
+          "oklch(0.860 0.0035 137.77)",
+          "oklch(0.950 0.0012 137.77)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "tonalRamp": [
+          "oklch(0.150 0.0049 128.60)",
+          "oklch(0.260 0.0085 128.60)",
+          "oklch(0.380 0.0115 128.60)",
+          "oklch(0.500 0.0115 128.60)",
+          "oklch(0.620 0.0115 128.60)",
+          "oklch(0.740 0.0115 128.60)",
+          "oklch(0.860 0.0064 128.60)",
+          "oklch(0.950 0.0023 128.60)"
+        ]
+      },
+      "selection": {
+        "role": "primary",
+        "displayName": "Selection",
+        "tonalRamp": [
+          "oklch(0.150 0.0056 141.81)",
+          "oklch(0.260 0.0097 141.81)",
+          "oklch(0.380 0.0130 141.81)",
+          "oklch(0.500 0.0130 141.81)",
+          "oklch(0.620 0.0130 141.81)",
+          "oklch(0.740 0.0130 141.81)",
+          "oklch(0.860 0.0073 141.81)",
+          "oklch(0.950 0.0026 141.81)"
+        ]
+      },
+      "violet": {
+        "role": "secondary",
+        "displayName": "Violet",
+        "tonalRamp": [
+          "oklch(0.150 0.0507 293.41)",
+          "oklch(0.260 0.0878 293.41)",
+          "oklch(0.380 0.1182 293.41)",
+          "oklch(0.500 0.1182 293.41)",
+          "oklch(0.620 0.1182 293.41)",
+          "oklch(0.740 0.1182 293.41)",
+          "oklch(0.860 0.0662 293.41)",
+          "oklch(0.950 0.0236 293.41)"
+        ]
+      },
+      "variant-ink": {
+        "role": "secondary",
+        "displayName": "Variant Ink",
+        "tonalRamp": [
+          "oklch(0.150 0.0291 307.95)",
+          "oklch(0.260 0.0504 307.95)",
+          "oklch(0.380 0.0679 307.95)",
+          "oklch(0.500 0.0679 307.95)",
+          "oklch(0.620 0.0679 307.95)",
+          "oklch(0.740 0.0679 307.95)",
+          "oklch(0.860 0.0380 307.95)",
+          "oklch(0.950 0.0136 307.95)"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink",
+        "tonalRamp": [
+          "oklch(0.150 0.0063 142.23)",
+          "oklch(0.260 0.0109 142.23)",
+          "oklch(0.380 0.0147 142.23)",
+          "oklch(0.500 0.0147 142.23)",
+          "oklch(0.620 0.0147 142.23)",
+          "oklch(0.740 0.0147 142.23)",
+          "oklch(0.860 0.0083 142.23)",
+          "oklch(0.950 0.0029 142.23)"
+        ]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark Muted",
+        "tonalRamp": [
+          "oklch(0.150 0.0097 143.18)",
+          "oklch(0.260 0.0168 143.18)",
+          "oklch(0.380 0.0226 143.18)",
+          "oklch(0.500 0.0226 143.18)",
+          "oklch(0.620 0.0226 143.18)",
+          "oklch(0.740 0.0226 143.18)",
+          "oklch(0.860 0.0126 143.18)",
+          "oklch(0.950 0.0045 143.18)"
+        ]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark Surface",
+        "tonalRamp": [
+          "oklch(0.150 0.0049 156.35)",
+          "oklch(0.260 0.0084 156.35)",
+          "oklch(0.380 0.0114 156.35)",
+          "oklch(0.500 0.0114 156.35)",
+          "oklch(0.620 0.0114 156.35)",
+          "oklch(0.740 0.0114 156.35)",
+          "oklch(0.860 0.0064 156.35)",
+          "oklch(0.950 0.0023 156.35)"
+        ]
+      },
+      "dark-line": {
+        "role": "neutral",
+        "displayName": "Dark Line",
+        "tonalRamp": [
+          "oklch(0.150 0.0103 147.40)",
+          "oklch(0.260 0.0178 147.40)",
+          "oklch(0.380 0.0240 147.40)",
+          "oklch(0.500 0.0240 147.40)",
+          "oklch(0.620 0.0240 147.40)",
+          "oklch(0.740 0.0240 147.40)",
+          "oklch(0.860 0.0134 147.40)",
+          "oklch(0.950 0.0048 147.40)"
+        ]
+      },
+      "dark-pale": {
+        "role": "primary",
+        "displayName": "Dark Pale",
+        "tonalRamp": [
+          "oklch(0.150 0.0101 149.84)",
+          "oklch(0.260 0.0174 149.84)",
+          "oklch(0.380 0.0235 149.84)",
+          "oklch(0.500 0.0235 149.84)",
+          "oklch(0.620 0.0235 149.84)",
+          "oklch(0.740 0.0235 149.84)",
+          "oklch(0.860 0.0132 149.84)",
+          "oklch(0.950 0.0047 149.84)"
+        ]
+      },
+      "dark-green": {
+        "role": "primary",
+        "displayName": "Dark Green",
+        "tonalRamp": [
+          "oklch(0.150 0.0264 148.61)",
+          "oklch(0.260 0.0457 148.61)",
+          "oklch(0.380 0.0616 148.61)",
+          "oklch(0.500 0.0616 148.61)",
+          "oklch(0.620 0.0616 148.61)",
+          "oklch(0.740 0.0616 148.61)",
+          "oklch(0.860 0.0345 148.61)",
+          "oklch(0.950 0.0123 148.61)"
+        ]
+      },
+      "diagram-paper": {
+        "role": "neutral",
+        "displayName": "Diagram Paper",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.260 0.0000 0.00)",
+          "oklch(0.380 0.0000 0.00)",
+          "oklch(0.500 0.0000 0.00)",
+          "oklch(0.620 0.0000 0.00)",
+          "oklch(0.740 0.0000 0.00)",
+          "oklch(0.860 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "diagram-ink": {
+        "role": "neutral",
+        "displayName": "Diagram Ink",
+        "tonalRamp": [
+          "oklch(0.150 0.0133 274.23)",
+          "oklch(0.260 0.0230 274.23)",
+          "oklch(0.380 0.0309 274.23)",
+          "oklch(0.500 0.0309 274.23)",
+          "oklch(0.620 0.0309 274.23)",
+          "oklch(0.740 0.0309 274.23)",
+          "oklch(0.860 0.0173 274.23)",
+          "oklch(0.950 0.0062 274.23)"
+        ]
+      },
+      "diagram-muted": {
+        "role": "neutral",
+        "displayName": "Diagram Muted",
+        "tonalRamp": [
+          "oklch(0.150 0.0183 261.12)",
+          "oklch(0.260 0.0317 261.12)",
+          "oklch(0.380 0.0427 261.12)",
+          "oklch(0.500 0.0427 261.12)",
+          "oklch(0.620 0.0427 261.12)",
+          "oklch(0.740 0.0427 261.12)",
+          "oklch(0.860 0.0239 261.12)",
+          "oklch(0.950 0.0085 261.12)"
+        ]
+      },
+      "diagram-accent": {
+        "role": "secondary",
+        "displayName": "Diagram Accent",
+        "tonalRamp": [
+          "oklch(0.150 0.0704 36.71)",
+          "oklch(0.260 0.1220 36.71)",
+          "oklch(0.380 0.1643 36.71)",
+          "oklch(0.500 0.1643 36.71)",
+          "oklch(0.620 0.1643 36.71)",
+          "oklch(0.740 0.1643 36.71)",
+          "oklch(0.860 0.0920 36.71)",
+          "oklch(0.950 0.0329 36.71)"
+        ]
+      },
+      "diagram-rule": {
+        "role": "neutral",
+        "displayName": "Diagram Rule",
+        "tonalRamp": [
+          "oklch(0.150 0.0005 197.13)",
+          "oklch(0.260 0.0008 197.13)",
+          "oklch(0.380 0.0011 197.13)",
+          "oklch(0.500 0.0011 197.13)",
+          "oklch(0.620 0.0011 197.13)",
+          "oklch(0.740 0.0011 197.13)",
+          "oklch(0.860 0.0006 197.13)",
+          "oklch(0.950 0.0002 197.13)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page Title",
+        "purpose": "App page heading."
+      },
+      "note-title": {
+        "displayName": "Note Title",
+        "purpose": "Editable note heading."
+      },
+      "note-body": {
+        "displayName": "Note Body",
+        "purpose": "Sustained note writing."
+      },
+      "graph-title": {
+        "displayName": "Graph Title",
+        "purpose": "Compact concept card title."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Compact interface control."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code block text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating-menu",
+        "value": "0 10px 45px #1b2a2430",
+        "purpose": "Contextual editing menu."
+      },
+      {
+        "name": "dialog",
+        "value": "0 20px 100px #23321b30",
+        "purpose": "Modal overlay."
+      },
+      {
+        "name": "toolbar",
+        "value": "0 4px 10px #233c2805",
+        "purpose": "Sticky editor separation."
+      },
+      {
+        "name": "mobile-drawer",
+        "value": "4px 0 30px #29372015",
+        "purpose": "Phone navigation overlay."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "background 0.15s, border-color 0.15s",
+        "purpose": "Button hover changes."
+      },
+      {
+        "name": "drawing-controls",
+        "value": "opacity 0.15s",
+        "purpose": "Contextual drawing tool reveal."
+      },
+      {
+        "name": "graph-reframe",
+        "value": "200ms",
+        "purpose": "React Flow fitView animation, separate from CSS reduced-motion rules."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition: none !important; animation-duration: 0.01ms !important",
+        "purpose": "Existing CSS reduced-motion preference handling."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "700px"
+      },
+      {
+        "name": "graph-list-and-single-note-pane",
+        "value": "1000px"
+      },
+      {
+        "name": "note-side-panel-narrow",
+        "value": "1200px"
+      },
+      {
+        "name": "graph-outline-hidden",
+        "value": "1250px"
+      },
+      {
+        "name": "legacy-wide-layout",
+        "value": "1550px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Light-theme action treatment, extracted from the existing primary button.",
+      "html": "<button class=\"ds-primary\">Open note</button>",
+      "css": ".ds-primary{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:12px;font-weight:550;line-height:1.4;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 13px;border-radius:7px;transition:background .15s,border-color .15s;background:var(--green,#245344);color:#fff;border:1px solid var(--green,#245344)}.ds-primary:hover{background:#183e31}.ds-primary:focus-visible{outline:3px solid #b7cab6;outline-offset:3px;}.ds-primary:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Quiet supporting action.",
+      "html": "<button class=\"ds-secondary\">Connections</button>",
+      "css": ".ds-secondary{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:12px;font-weight:550;line-height:1.4;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 13px;border-radius:7px;transition:background .15s,border-color .15s;background:#fff;color:#3b5042;border:1px solid #dce3d8}.ds-secondary:hover{background:#eff4ec;border-color:#c5d2bf}.ds-secondary:focus-visible{outline:3px solid #b7cab6;outline-offset:3px;}.ds-secondary:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard field with a sage focus ring.",
+      "html": "<input class=\"ds-field\" aria-label=\"Concept title\" placeholder=\"Concept title\"/>",
+      "css": ".ds-field{font-family:Inter,sans-serif;font-size:13px;border:1px solid #dfe5db;background:#fff;border-radius:7px;padding:10px 12px;color:#2c4033;outline:none;max-width:100%}.ds-field::placeholder{color:#69746c;opacity:1}.ds-field:focus{border-color:#8fa88e;box-shadow:0 0 0 3px #e6eee2}"
+    },
+    {
+      "name": "Active navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Selected row in the pale navigation frame.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Notebook\"><button aria-current=\"page\">Notebook</button><button>Knowledge Graph</button></nav>",
+      "css": ".ds-nav{display:flex;flex-direction:column;gap:5px;background:#f0f3ef;padding:12px}.ds-nav button{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:12px;font-weight:550;line-height:1.4;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 13px;border-radius:7px;transition:background .15s,border-color .15s;justify-content:flex-start;border:0;background:transparent;padding:10px 12px;font-size:13px;font-weight:500;color:#74826b}.ds-nav button[aria-current]{background:#e2e9e1;color:var(--ink,#24392f)}.ds-nav button:hover{background:#eff4ec}.ds-nav button:focus-visible{outline:3px solid #b7cab6;outline-offset:3px;}"
+    },
+    {
+      "name": "Concept card",
+      "kind": "card",
+      "refersTo": "graph-card",
+      "description": "Flat graph node with explicit state and an open-note action.",
+      "html": "<article class=\"ds-concept\"><small>AI foundations</small><strong>Embeddings</strong><p>Represent meaning as vectors</p><footer>Collected <button aria-label=\"Open Embeddings\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M7 17 17 7M7 7h10v10\"/></svg></button></footer></article>",
+      "css": ".ds-concept{width:230px;min-height:124px;padding:12px 14px;border:1px solid #aebeb2;border-radius:6px;box-shadow:none;background:#fff;font-family:Inter,sans-serif;color:#24392f}.ds-concept small{font-size:11px;color:#606e65}.ds-concept strong{display:block;font-size:16px;line-height:1.3;font-weight:600;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-concept p{font-size:11px;color:#606e65;margin:4px 0 7px}.ds-concept footer{display:flex;justify-content:space-between;font-size:11px;color:#606e65}.ds-concept button{padding:0;border:0;background:transparent;color:inherit;cursor:pointer}.ds-concept button:hover{background:#eff4ec}.ds-concept button:focus-visible{outline:3px solid #b7cab6;outline-offset:3px;}"
+    },
+    {
+      "name": "Selected concept card",
+      "kind": "card",
+      "refersTo": "graph-card-selected",
+      "description": "Sage selection strengthens the border without adding elevation.",
+      "html": "<article class=\"ds-selected\"><strong>Embeddings</strong><p>Collected</p></article>",
+      "css": ".ds-selected{font-family:Inter,sans-serif;width:230px;min-height:124px;padding:12px 14px;border:1.5px solid #245344;border-radius:6px;background:#eff5ef;color:#24392f;box-shadow:none}.ds-selected strong{font-size:16px;font-weight:600;line-height:1.3}.ds-selected p{font-size:11px;color:#606e65}"
+    },
+    {
+      "name": "Definition alternatives",
+      "kind": "custom",
+      "refersTo": "variant-group",
+      "description": "Inline alternatives with a native disclosure preview; editor disclosure is implemented in React.",
+      "html": "<section class=\"ds-variants\"><p>A vector represents a concept numerically.</p><details><summary>1 alternative</summary><p>A position in a space of related meanings.</p></details><button>Add variant</button></section>",
+      "css": ".ds-variants{border-left:1px solid #b9cabb;padding:8px 0 8px 17px;margin:16px 0;color:var(--ink,#24392f)}.ds-variants p{font:16px/1.85 Lora,Georgia,serif;margin:0 0 16px}.ds-variants summary,.ds-variants button{font:12px/1.4 Inter,sans-serif;color:#655078;cursor:pointer}.ds-variants button{border:0;background:transparent;padding:3px 6px}.ds-variants button:hover{background:#eff4ec}.ds-variants :is(summary,button):focus-visible{outline:3px solid #b7cab6;outline-offset:3px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A working sheet beside a quiet frame",
+    "overview": "Synapse keeps the user-confirmed sage and ink identity. A pale frame contains navigation and a white sheet carries the work. The interface is compact and restrained, while Lora gives sustained note writing a slower reading rhythm. Inter keeps controls and graph relationships easy to scan.\n\nThis records the implemented system in `src/styles.css`, sampled against `Graph.tsx`, `RichEditor.tsx`, `NoteView.tsx`, `editorNodes.tsx`, and `diagramDesign.ts`. It preserves an existing identity rather than proposing a new visual world. The independently chosen Diagram Design editorial treatment belongs to generated diagrams, not the surrounding notebook interface.",
+    "keyCharacteristics": [
+      "Sage selection and deep ink text.",
+      "A white working sheet within a pale frame.",
+      "Inter controls paired with Lora note typography.",
+      "Quiet containers, visible relationships, and contextual editing tools.",
+      "A separate editorial palette for generated diagrams."
+    ],
+    "rules": [
+      {
+        "name": "The Separate Diagram World Rule",
+        "body": "Use the editorial palette inside generated diagrams; keep sage and ink for notebook chrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Reading Speeds Rule",
+        "body": "Keep sustained writing in Lora and task controls and graph relationships in Inter.",
+        "section": "typography"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "Keep working surfaces flat; reserve visible elevation for overlays.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve the confirmed sage and ink identity and Inter/Lora pairing.",
+      "Do use semantic ink, surface, line, and muted variables for theme-aware graph text.",
+      "Do preserve a white reading sheet and quiet contextual controls.",
+      "Do pair status color with explicit text.",
+      "Do keep generated diagram styling separate from application chrome.",
+      "Do verify responsive layouts against the final cascade and the rendered surface."
+    ],
+    "donts": [
+      "Don't replace the existing identity during ordinary refinement.",
+      "Don't turn graph-specific composition into a global layout requirement.",
+      "Don't give flat working cards decorative elevation.",
+      "Don't use em dashes in interface copy, generated text, or documentation."
+    ]
+  }
+}

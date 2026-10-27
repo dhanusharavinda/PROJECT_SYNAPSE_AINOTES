@@ -218,7 +218,7 @@ export class Providers {
           "This model has a custom raw template. Select a standard chat model or a supported Qwen3 model.",
         );
       const escapeTokens = (text: string) => text.replaceAll("<|", "< |");
-      const prompt = `<|im_start|>system\n${escapeTokens(guard + instructions)}<|im_end|>\n<|im_start|>user\n${escapeTokens(input)}<|im_end|>\n<|im_start|>assistant\n`;
+      const prompt = `<|im_start|>system\n${escapeTokens(guard + instructions)}<|im_end|>\n<|im_start|>user\n${escapeTokens(input)}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n`;
       const r = await fetch(
         this.config.ollamaUrl + (rawTemplate ? "/api/generate" : "/api/chat"),
         {
@@ -228,7 +228,11 @@ export class Providers {
             model: this.config.ollamaModel,
             stream: false,
             think: false,
-            options: { num_predict: 3500 },
+            options: {
+              num_predict: 2200,
+              num_ctx:
+                input.length + instructions.length > 14000 ? 16384 : 8192,
+            },
             format,
             ...(rawTemplate ? { raw: true, prompt } : {}),
             messages: [
@@ -236,7 +240,7 @@ export class Providers {
               { role: "user", content: input },
             ],
           }),
-          signal: AbortSignal.timeout(90000),
+          signal: AbortSignal.timeout(180000),
         },
       );
       if (!r.ok)
@@ -255,7 +259,9 @@ export class Providers {
           502,
           "The local model did not finish a usable answer. Try a shorter request or another installed model. No notes were changed.",
         );
-      return answer.replaceAll("\u2014", ",");
+      return answer
+        .replace(/^<think>[\s\S]*?<\/think>\s*/, "")
+        .replaceAll("\u2014", ",");
     }
     const r = await this.client().responses.create({
       model: this.config.model,
@@ -373,6 +379,10 @@ export class Providers {
     return result.output_text.replaceAll("\u2014", ",");
   }
   async speech(script: string, output: string, provider: string) {
+    if (provider === "hermes") {
+      const { hermesVoice } = await import("./hermesVoice.js");
+      return hermesVoice({ script, output });
+    }
     if (provider === "openai") {
       const result = await this.client().audio.speech.create({
         model: "gpt-4o-mini-tts",

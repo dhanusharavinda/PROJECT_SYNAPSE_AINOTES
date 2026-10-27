@@ -5,8 +5,9 @@ import {
   Check,
   RefreshCw,
   KeyRound,
+  Layers,
 } from "lucide-react";
-import { api } from "./api";
+import { api, hosted } from "./api";
 import { Busy } from "./ui";
 import type { Bootstrap, Note } from "./types";
 export default function Settings({
@@ -26,6 +27,12 @@ export default function Settings({
   });
   const [busy, setBusy] = useState(false);
   const [archived, setArchived] = useState<Note[]>([]);
+  const [pairOrigin, setPairOrigin] = useState("");
+  const [pairing, setPairing] = useState<{
+    origin: string;
+    code: string;
+    expires: string;
+  }>();
   function update(k: string, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -51,7 +58,6 @@ export default function Settings({
     <div className="workspace-page settings-page">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">YOUR NOTEBOOK, YOUR CHOICES</div>
           <h1>
             Settings<span className="title-dot">.</span>
           </h1>
@@ -78,6 +84,64 @@ export default function Settings({
           <span className="pill">
             {data.config.lan ? "LAN mode enabled" : "Loopback only"}
           </span>
+          <h4>Web companion</h4>
+          <p className="small muted">
+            Connect your Vercel interface on this computer. Your vault stays
+            local. Pair only your own Synapse deployment.
+          </p>
+          {!hosted && (
+            <>
+              <label>
+                Synapse site address
+                <input
+                  type="url"
+                  aria-label="Synapse site address"
+                  placeholder="https://your-synapse.vercel.app"
+                  value={pairOrigin}
+                  onChange={(e) => setPairOrigin(e.target.value)}
+                />
+              </label>
+              <button
+                disabled={!pairOrigin.trim() || busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    setPairing(
+                      await api("/pairing", { origin: pairOrigin.trim() }),
+                    );
+                  } catch (e) {
+                    notify((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Generate pairing code
+              </button>
+              {pairing && (
+                <p role="status">
+                  Code for {pairing.origin}:{" "}
+                  <strong className="pairing-code">{pairing.code}</strong>
+                  <br />
+                  Expires at {new Date(pairing.expires).toLocaleTimeString()}.
+                  Enter it only on that site.
+                </p>
+              )}
+            </>
+          )}
+          <button
+            onClick={async () => {
+              try {
+                await api("/pairing", undefined, "DELETE");
+                setPairing(undefined);
+                notify("Web companion access revoked.");
+              } catch (e) {
+                notify((e as Error).message);
+              }
+            }}
+          >
+            Revoke web companion access
+          </button>
           <h4>Sharing beyond this computer</h4>
           <p className="small muted">
             Start with --lan and set SYNAPSE_ALLOWED_HOSTS to the computer’s LAN
@@ -88,7 +152,7 @@ export default function Settings({
         </section>
         <section className="settings-card">
           <h3>
-            <SparkIcon />
+            <Layers size={18} />
             AI provider
           </h3>
           <label>
@@ -249,7 +313,4 @@ export default function Settings({
       </footer>
     </div>
   );
-}
-function SparkIcon() {
-  return <span>✦</span>;
 }

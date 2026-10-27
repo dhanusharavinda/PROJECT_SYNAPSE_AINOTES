@@ -585,6 +585,8 @@ describe("bounded retrieval and local delivery preparation", () => {
     expect(String(local.mock.calls[1][0])).toContain("/api/generate");
     const payload = JSON.parse(local.mock.calls[1][1].body);
     expect(payload.prompt).toContain("Embeddings");
+    expect(payload.prompt).toContain("<think>\n\n</think>\n\n");
+    expect(payload.options.num_ctx).toBe(8192);
   });
   it("blocks an Ollama cloud alias before sending note content", async () => {
     app.providers.config.provider = "ollama";

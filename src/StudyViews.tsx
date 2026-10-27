@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Plus,
   Upload,
@@ -17,6 +17,7 @@ import {
   Mic,
   Search,
 } from "lucide-react";
+import { bodyOf, plainNote } from "./content";
 import type { Bootstrap, Note, Source, Episode } from "./types";
 import { api, fileUrl } from "./api";
 import { Modal, MD, Busy, Empty } from "./ui";
@@ -65,7 +66,6 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
     <div className="workspace-page inbox-page">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">COLLECT WITH INTENTION</div>
           <h1>
             Your Inbox<span className="title-dot">.</span>
           </h1>
@@ -158,7 +158,7 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
                   )}
                 </span>
                 <div>
-                  <span className="eyebrow">
+                  <span className="section-label">
                     {s.kind} · {new Date(s.created).toLocaleDateString()}
                   </span>
                   <strong>{s.title}</strong>
@@ -174,7 +174,6 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
           </div>
           {source && (
             <article className="source-detail">
-              <div className="eyebrow">ORIGINAL SOURCE</div>
               <h2>{source.title}</h2>
               <p className="coverage">{source.coverage}</p>
               <div className="actions wrap">
@@ -543,7 +542,6 @@ export function Review({
     <div className="workspace-page review-page">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">RETRIEVE BEFORE YOU REVEAL</div>
           <h1>
             Make it stick<span className="title-dot">.</span>
           </h1>
@@ -553,7 +551,7 @@ export function Review({
       </header>
       <div className="review-layout">
         <aside className="review-queue">
-          <span className="eyebrow">YOUR CONCEPTS</span>
+          <span className="section-label">Your concepts</span>
           {data.notes.map((n) => (
             <button
               className={id === n.id ? "selected" : ""}
@@ -577,9 +575,6 @@ export function Review({
         </aside>
         {note ? (
           <article className="review-card">
-            <div className="eyebrow">
-              {note.group} / {note.title}
-            </div>
             <h2>{prompt}</h2>
             <div className="actions">
               <button onClick={() => setHint(true)} disabled={hint}>
@@ -594,7 +589,7 @@ export function Review({
             {hint && (
               <div className="hint">
                 <strong>A small cue</strong>
-                <p>{note.layers.intuition.split(/[.!?]/)[0]}.</p>
+                <p>{plainNote(note).split(/[.!?]/)[0]}.</p>
               </div>
             )}
             <label className="answer-label">
@@ -613,12 +608,8 @@ export function Review({
             ) : (
               <>
                 <div className="revealed-note">
-                  <span className="eyebrow">YOUR SAVED EXPLANATION</span>
-                  <MD text={note.layers.intuition} />
-                  <details>
-                    <summary>Technical detail</summary>
-                    <MD text={note.layers.technical} />
-                  </details>
+                  <span className="section-label">Your saved explanation</span>
+                  <MD text={bodyOf(note)} />
                   <button onClick={() => onOpen(note)}>
                     Open note <ArrowUpRight size={13} />
                   </button>
@@ -711,6 +702,12 @@ export function Review({
   );
 }
 export function Audio({ data, refresh, notify }: Props) {
+  const [voice, setVoice] = useState<any>();
+  useEffect(() => {
+    api("/voice/status")
+      .then(setVoice)
+      .catch(() => setVoice({ available: false }));
+  }, []);
   const [selected, setSelected] = useState<string[]>([]);
   const [episodeId, setEpisodeId] = useState<string>();
   const [script, setScript] = useState("");
@@ -743,7 +740,6 @@ export function Audio({ data, refresh, notify }: Props) {
     <div className="workspace-page audio-page">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">TAKE YOUR LEARNING WITH YOU</div>
           <h1>
             Revision studio<span className="title-dot">.</span>
           </h1>
@@ -779,19 +775,20 @@ export function Audio({ data, refresh, notify }: Props) {
             onClick={() => make(false)}
           >
             <Plus size={14} />
-            Create local script
+            Create narration
           </button>
           <button
             disabled={!selected.length || !!busy}
             onClick={() => setModal("script")}
           >
             <Sparkles size={14} />
-            Draft with AI
+            Draft conversational podcast
           </button>
           <div className="quiet-note">
             <p>
-              Local scripts and Windows speech need no cloud provider. Listening
-              alone does not mark a concept practiced.
+              Podcast scripts can use local AI. Hermes voice uses the same
+              configured voice as Telegram replies. Listening alone does not
+              mark a concept practiced.
             </p>
           </div>
           <h4>Saved episodes</h4>
@@ -845,16 +842,10 @@ export function Audio({ data, refresh, notify }: Props) {
               <button
                 className="primary"
                 disabled={!!busy || editing}
-                onClick={() =>
-                  run("render", () =>
-                    api("/episodes/" + episode.id + "/render", {
-                      provider: "local",
-                    }),
-                  )
-                }
+                onClick={() => setModal("hermesVoice")}
               >
                 {busy === "render" ? <Busy /> : <Play size={14} />}Generate
-                local audio
+                Hermes voice
               </button>
               <button
                 disabled={!!busy || editing}
@@ -864,6 +855,26 @@ export function Audio({ data, refresh, notify }: Props) {
                 OpenAI voice
               </button>
             </div>
+            <p className="voice-caption">
+              {voice?.available
+                ? `Hermes voice: ${voice.provider}  /  ${voice.voice}${voice.online ? "  /  online speech" : "  /  local speech"}`
+                : "Hermes voice status is unavailable."}
+            </p>
+            <details className="offline-voice">
+              <summary>Other voice options</summary>
+              <button
+                disabled={!!busy || editing}
+                onClick={() =>
+                  run("render", () =>
+                    api("/episodes/" + episode.id + "/render", {
+                      provider: "local",
+                    }),
+                  )
+                }
+              >
+                Windows voice (offline, robotic)
+              </button>
+            </details>
             {editing ? (
               <>
                 <textarea
@@ -921,22 +932,26 @@ export function Audio({ data, refresh, notify }: Props) {
           title={
             modal === "script"
               ? "Draft a revision podcast?"
-              : modal === "speech"
-                ? "Generate OpenAI audio?"
-                : modal === "hermes"
-                  ? "Approve Hermes Telegram delivery?"
-                  : "Approve Telegram delivery?"
+              : modal === "hermesVoice"
+                ? "Generate the Hermes voice?"
+                : modal === "speech"
+                  ? "Generate OpenAI audio?"
+                  : modal === "hermes"
+                    ? "Approve Hermes Telegram delivery?"
+                    : "Approve Telegram delivery?"
           }
           onClose={() => setModal("")}
         >
           <p>
             {modal === "script"
               ? `Selected notes will be sent to ${data.config.provider === "ollama" ? "your local Ollama model" : "OpenAI, if configured"} to draft an editable script.`
-              : modal === "speech"
-                ? "The reviewed script will be sent to OpenAI for speech generation. This is a paid API action."
-                : modal === "hermes"
-                  ? "This sends the reviewed audio through the installed Hermes CLI to its configured Telegram home chat. An explicit delivery receipt is saved locally."
-                  : "This sends the generated audio to the chat configured in Settings. Telegram stores the delivered message."}
+              : modal === "hermesVoice"
+                ? `This uses the exact Hermes voice-note synthesis pipeline (${voice?.provider || "configured provider"}, ${voice?.voice || "configured voice"}). ${voice?.online ? "The reviewed script is sent to the configured speech service." : ""} The audio is saved here. No Telegram message is sent by this action.`
+                : modal === "speech"
+                  ? "The reviewed script will be sent to OpenAI for speech generation. This is a paid API action."
+                  : modal === "hermes"
+                    ? "This sends the reviewed audio through the installed Hermes CLI to its configured Telegram home chat. An explicit delivery receipt is saved locally."
+                    : "This sends the generated audio to the chat configured in Settings. Telegram stores the delivered message."}
           </p>
           <button
             className="primary"
@@ -948,9 +963,15 @@ export function Audio({ data, refresh, notify }: Props) {
                   const r = await api(
                     "/episodes/" +
                       episode!.id +
-                      (modal === "speech" ? "/render" : "/deliver"),
-                    modal === "speech"
-                      ? { provider: "openai", consent: true }
+                      (["speech", "hermesVoice"].includes(modal)
+                        ? "/render"
+                        : "/deliver"),
+                    ["speech", "hermesVoice"].includes(modal)
+                      ? {
+                          provider:
+                            modal === "hermesVoice" ? "hermes" : "openai",
+                          consent: true,
+                        }
                       : { mode: modal, confirm: true },
                   );
                   notify(r.message || "Audio generated.");

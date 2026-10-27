@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import matter from "gray-matter";
 import { z } from "zod";
 import type { Note, State, Layer } from "../src/types.js";
+import { inlineTargets } from "../src/content.js";
 
 export class AppError extends Error {
   constructor(
@@ -18,6 +19,7 @@ export const linkSchema = z.object({
   target: z.string().uuid(),
   relation: z.enum(["related", "prerequisite", "used-in", "contrasts"]),
   reason: z.string().max(1000).default(""),
+  inline: z.boolean().optional(),
 });
 export const layersSchema = z.object({
   intuition: z.string().max(200000),
@@ -33,6 +35,8 @@ export const noteSchema = z.object({
     .max(120)
     .transform((s) => s || "Unsorted"),
   layers: layersSchema,
+  body: z.string().max(600000).optional(),
+  parentId: z.string().uuid().nullable().optional(),
   links: z.array(linkSchema).max(500),
   sources: z.array(z.string().uuid()).max(500),
   drawings: z.array(z.string().uuid()).max(100),
@@ -57,7 +61,12 @@ export const safeId = (id: string) => {
   return id;
 };
 export function encodeNote(n: Note) {
-  const { layers, etag, ...meta } = n;
+  const { layers, etag, body, ...meta } = n;
+  if (body !== undefined)
+    return matter.stringify(`\n<!-- synapse:body -->\n\n${body}\n`, {
+      ...meta,
+      format: 2,
+    });
   return matter.stringify(
     `\n<!-- synapse:layer:intuition -->\n## Intuition\n\n${layers.intuition}\n\n<!-- synapse:layer:technical -->\n## Technical\n\n${layers.technical}\n\n<!-- synapse:layer:implementation -->\n## Implementation\n\n${layers.implementation}\n`,
     meta,
@@ -70,6 +79,18 @@ export function decodeNote(raw: string): Note {
     layers: { intuition: "", technical: "", implementation: "" },
   });
   const layers = { intuition: "", technical: "", implementation: "" };
+  if (data.format === 2 || content.includes("<!-- synapse:body -->")) {
+    const body = content.replace(/^\s*<!-- synapse:body -->\r?\n\r?\n/, "").replace(/\r?\n$/, "");
+    return {
+      ...parsed,
+      id: safeId(data.id),
+      revision: z.number().int().min(1).parse(data.revision),
+      updated: z.string().parse(data.updated),
+      body,
+      layers: { intuition: "", technical: "", implementation: "" },
+      etag: crypto.createHash("sha256").update(raw).digest("hex"),
+    };
+  }
   const marked = content.includes("<!-- synapse:layer:intuition -->");
   const matches = [
     ...content.matchAll(
@@ -192,6 +213,41 @@ export class Vault {
     safeId(n.id);
     noteSchema.parse(n);
     const all = await this.notes(true);
+    if (n.parentId) {
+      let parent: string | null | undefined = n.parentId;
+      const seen = new Set([n.id]);
+      while (parent) {
+        if (seen.has(parent))
+          throw new AppError(
+            400,
+            "A page cannot be inside itself or one of its subpages.",
+          );
+        seen.add(parent);
+        const ancestor = all.find((x) => x.id === parent);
+        if (!ancestor)
+          throw new AppError(400, "The parent page does not exist.");
+        parent = ancestor.parentId;
+      }
+    }
+    if (n.body !== undefined) {
+      const ids = inlineTargets(n.body).filter(
+        (id) => id !== n.id && all.some((x) => x.id === id),
+      );
+      n = {
+        ...n,
+        links: [
+          ...n.links.filter((l) => !l.inline || ids.includes(l.target)),
+          ...ids
+            .filter((id) => !n.links.some((l) => l.target === id))
+            .map((target) => ({
+              target,
+              relation: "related" as const,
+              reason: "Linked in this page",
+              inline: true,
+            })),
+        ],
+      };
+    }
     const old = all.find((x) => x.id === n.id);
     if (old && (expected !== old.revision || (n.etag && old.etag !== n.etag)))
       throw new AppError(

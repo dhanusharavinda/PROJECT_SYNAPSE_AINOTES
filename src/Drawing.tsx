@@ -7,6 +7,7 @@ import {
 import "@excalidraw/excalidraw/index.css";
 import { api } from "./api";
 import { Modal, Busy } from "./ui";
+import { diagramLayout } from "./diagramDesign";
 export default function Drawing({
   id,
   onClose,
@@ -25,33 +26,52 @@ export default function Drawing({
     api("/drawings/" + id)
       .then((d: any) => {
         if (d.diagram && !d.elements.length) {
-          const nodes: any[] = d.diagram.nodes.map((n: any, i: number) => ({
+          const layout = diagramLayout(d.diagram);
+          const nodes: any[] = layout.nodes.map((n: any, i: number) => ({
             id: n.id,
-            type: "rectangle",
-            x: (i % 3) * 280,
-            y: Math.floor(i / 3) * 180,
-            width: 220,
-            height: 85,
-            backgroundColor: "#e1eee8",
-            strokeColor: "#22584a",
-            label: { text: n.label, fontSize: 18 },
+            type:
+              n.kind === "decision"
+                ? "diamond"
+                : n.kind === "terminal"
+                  ? "ellipse"
+                  : "rectangle",
+            x: n.x - n.width / 2,
+            y: n.y - n.height / 2,
+            width: n.width,
+            height: n.height,
+            backgroundColor: i === 0 ? "#f4e6df" : "#f5f5f5",
+            strokeColor: i === 0 ? "#bf4520" : "#2d3142",
+            roughness: 0,
+            roundness: null,
+            label: {
+              text: n.label,
+              fontSize: 16,
+              fontFamily: 2,
+              strokeColor: "#2d3142",
+            },
           }));
-          for (const e of d.diagram.edges) {
-            const a = nodes.find((n) => n.id === e.from),
-              b = nodes.find((n) => n.id === e.to);
+          for (const e of layout.edges) {
+            const start = e.points[0],
+              end = e.points.at(-1)!;
             nodes.push({
               type: "arrow",
-              x: a.x + 220,
-              y: a.y + 42,
-              width: b.x - a.x - 220 || 80,
-              height: b.y - a.y,
-              points: [
-                [0, 0],
-                [b.x - a.x - 220 || 80, b.y - a.y],
-              ],
+              x: start[0],
+              y: start[1],
+              width: end[0] - start[0],
+              height: end[1] - start[1],
+              points: e.points.map((p) => [p[0] - start[0], p[1] - start[1]]),
+              strokeColor: "#4f5d75",
+              roughness: 0,
               start: { id: e.from },
               end: { id: e.to },
-              label: e.label ? { text: e.label, fontSize: 14 } : undefined,
+              label: e.label
+                ? {
+                    text: e.label,
+                    fontSize: 14,
+                    fontFamily: 2,
+                    strokeColor: "#4f5d75",
+                  }
+                : undefined,
             });
           }
           d.elements = convertToExcalidrawElements(nodes, {
@@ -72,7 +92,7 @@ export default function Drawing({
       const svg = await exportToSvg({
         elements,
         files,
-        appState: { ...appState, exportBackground: true },
+        appState: { ...appState, exportBackground: false },
       });
       await api(
         "/drawings/" + id,
@@ -85,7 +105,10 @@ export default function Drawing({
         "PUT",
       );
       dirty.current = false;
-      notify("Drawing saved locally, including an SVG preview.");
+      window.dispatchEvent(
+        new CustomEvent("synapse:drawing-saved", { detail: { id } }),
+      );
+      notify("Drawing saved with a transparent background.");
       onClose();
     } catch (e) {
       notify((e as Error).message);
@@ -110,6 +133,11 @@ export default function Drawing({
         <div className="drawing-stage">
           {data ? (
             <Excalidraw
+              theme={
+                document.documentElement.dataset.theme === "dark"
+                  ? "dark"
+                  : "light"
+              }
               excalidrawAPI={(a) => (ref.current = a)}
               initialData={{
                 elements: data.elements,

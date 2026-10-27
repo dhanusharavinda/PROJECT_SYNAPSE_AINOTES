@@ -1,4 +1,5 @@
 import type { Note } from "../src/types.js";
+import { plainNote } from "../src/content.js";
 const normalize = (word: string) =>
   word.length > 4 && word.endsWith("s") && !word.endsWith("ss")
     ? word.slice(0, -1)
@@ -33,7 +34,9 @@ export function candidateNotes(text: string, notes: Note[], limit = 12) {
           .toLowerCase()
           .match(/[a-z0-9]{3,}/g) || [];
       const body =
-        note.layers.intuition.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
+        plainNote(note)
+          .toLowerCase()
+          .match(/[a-z0-9]{3,}/g) || [];
       return {
         note,
         index,
@@ -48,6 +51,7 @@ export function candidateNotes(text: string, notes: Note[], limit = 12) {
 }
 export function speechText(text: string) {
   return text
+    .replace(/<[^>]*>/g, "")
     .replace(/```[\s\S]*?```/g, "A code example is available in your note.")
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, "An image is available in your note.")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
