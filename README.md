@@ -8,6 +8,10 @@ Version 1.1 adds a full-width notebook sheet, direct pen and arrow tools, movabl
 
 The Windows app is the main Synapse product. It runs the notebook service inside the app and keeps the vault in a separate folder, normally `Documents\Synapse`. The optional Vercel companion can still connect to a running local service, but it is not required for ordinary use. The vault is never packaged into the installer.
 
+## iPad and Android notebook
+
+Version 1.4 adds an installable PWA at `/tablet/`: offline writing and drawing, local backups, and paired private sync with Windows. See [Tablet installation and sync](docs/TABLET_APP.md).
+
 ## Install the Windows app
 
 Download `Synapse-Setup-<version>.exe` from GitHub Releases and run it. On first launch, choose one of these options:

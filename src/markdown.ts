@@ -2,6 +2,7 @@ export function displayMarkdown(text: string) {
   return text.replace(/(\]\()\.\.\/(attachments|drawings)\//g, "$1/files/$2/");
 }
 export function storageMarkdown(text: string) {
+  text = text.replaceAll("/tablet/files/", "/files/");
   return text
     .replace(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+(?=\/files\/)/g, "")
     .replace(

@@ -10,6 +10,8 @@ export function pairingToken() {
   }
 }
 export function mediaUrl(url: string) {
+  if (location.pathname.startsWith("/tablet") && url.startsWith("/files/"))
+    return "/tablet" + url.split("?")[0];
   if (!hosted || !url.startsWith("/files/")) return url;
   return (
     companion +

@@ -137,3 +137,12 @@ Late in QA, the embedded browser stopped reliably dispatching mouse and keyboard
 ## Useful commands
 
 `npm run check`, `npm test`, and `npm run build` verify the code. `npx tsx scripts/production-check.ts` checks the running app without changing notes. `npx tsx scripts/local-smoke.ts` checks extraction, encrypted settings, video sampling, and local audio using work fixtures. `npx tsx scripts/local-ai-check.ts` checks the installed local model with synthetic content. `npx tsx scripts/live-ai-workflow.ts` exercises the approval workflow with a synthetic note and archives that note afterward.
+
+
+## Tablet companion 1.4 verification
+
+139 automated tests pass, including pairing origin/expiry/revocation, hashed token persistence, gateway isolation, idempotent writes, deleted-note conflicts, file validation, conditional pulls, backup validation, late acknowledgements, palm-touch cancellation and undoable pen dots. Production browser checks saved a pressure-aware pen stroke and reopened it offline with the same title and stroke count and no page errors. Phone-size checks exercised writing and theme switching. A paired browser uploaded its local page into a disposable PC vault, then received a subsequent PC edit through foreground sync. Public PWA route, manifest, service worker and precache URLs return 200.
+
+The offline app shell is approximately 2.7 MB before user data. The desktop workspace is excluded from tablet precaching. A manual design scan reported three advisory font-size differences in the tablet surface, with no blocking findings. Physical iPad/Android pen latency, native palm rejection, real private-network setup and background OS suspension were not tested. No real user vault or active installed app was changed during QA.
+
+The packaged Windows 1.4 runtime was launched hidden with an isolated empty vault and profile. Its page returned 200, its unauthenticated device endpoint returned 401, and the dedicated gateway refused the owner API with 404. The test process was then closed; the installed user app was left running.

@@ -33,6 +33,12 @@ export default function Settings({
     telegramChat: "",
   });
   const [busy, setBusy] = useState(false);
+  const [tabletOrigin, setTabletOrigin] = useState(""),
+    [tabletCode, setTabletCode] = useState(""),
+    [gatewayPort, setGatewayPort] = useState<number>(),
+    [devices, setDevices] = useState<
+      { id: string; name: string; origin: string }[]
+    >([]);
   const [clearing, setClearing] = useState(false),
     [clearText, setClearText] = useState("");
   const [archived, setArchived] = useState<Note[]>([]);
@@ -443,6 +449,85 @@ export default function Settings({
         </section>
       </div>
       <footer className="settings-save">
+        {!hosted && (
+          <details className="device-pairing">
+            <summary>Pair iPad or Android notebook</summary>
+            <p>
+              Install the tablet web app at /tablet/ on your HTTPS companion
+              site. Enter that exact site origin below. Install Tailscale on
+              both devices and sign in to the same private network. Enable
+              private sync below, then run the displayed command in PowerShell.
+              Keep Synapse open while syncing.
+            </p>
+            <button
+              onClick={() =>
+                void api<{ port: number }>("/devices/gateway", {})
+                  .then((r) => setGatewayPort(r.port))
+                  .catch((e) => notify(e.message))
+              }
+            >
+              Enable private sync
+            </button>
+            {gatewayPort && (
+              <p>
+                Run{" "}
+                <code>tailscale serve --bg http://127.0.0.1:{gatewayPort}</code>
+                . Use the HTTPS address it prints on the tablet. This port only
+                accepts paired device sync.
+              </p>
+            )}
+            <input
+              aria-label="Tablet app origin"
+              placeholder="https://your-tablet-site.example"
+              value={tabletOrigin}
+              onChange={(e) => setTabletOrigin(e.target.value)}
+            />
+            <button
+              onClick={async () => {
+                try {
+                  const r = await api<any>("/devices/pair", {
+                    origin: tabletOrigin,
+                  });
+                  setTabletCode(r.code);
+                } catch (e) {
+                  notify((e as Error).message);
+                }
+              }}
+            >
+              Generate 5-minute device code
+            </button>
+            {tabletCode && (
+              <p>
+                <code>{tabletCode}</code>
+              </p>
+            )}
+            <button
+              onClick={() =>
+                void api<any[]>("/devices")
+                  .then(setDevices)
+                  .catch((e) => notify(e.message))
+              }
+            >
+              Show paired devices
+            </button>
+            {devices.map((d) => (
+              <p key={d.id}>
+                {d.name} <small>{d.origin}</small>
+                <button
+                  onClick={() =>
+                    void api("/devices/" + d.id, undefined, "DELETE")
+                      .then(() =>
+                        setDevices(devices.filter((x) => x.id !== d.id)),
+                      )
+                      .catch((e) => notify(e.message))
+                  }
+                >
+                  Revoke
+                </button>
+              </p>
+            ))}
+          </details>
+        )}
         {!hosted && (
           <button onClick={() => setClearing(true)}>Clear notebook data</button>
         )}

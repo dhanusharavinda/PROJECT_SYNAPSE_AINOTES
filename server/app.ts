@@ -28,6 +28,7 @@ import { candidateNotes, speechText } from "./retrieval.js";
 import { deliverHermes } from "./hermes.js";
 import { youtubeLink } from "../src/youtube.js";
 import { diagramSchema } from "./diagramSchema.js";
+import { DeviceSync } from "./deviceSync.js";
 import type { Note, Proposal, Source } from "../src/types.js";
 
 export async function createApp(
@@ -42,6 +43,8 @@ export async function createApp(
   app.disable("x-powered-by");
   const session = crypto.randomBytes(32).toString("hex");
   const pairings = new Pairings();
+  const devices = new DeviceSync(vault);
+  await devices.load();
   const port = process.env.PORT || "4317";
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -67,7 +70,10 @@ export async function createApp(
       foreign &&
       (req.path.startsWith("/api") || req.path.startsWith("/files"))
     ) {
-      if (!pairings.allows(origin))
+      if (
+        !pairings.allows(origin) &&
+        !(req.path.startsWith("/api/device/") && devices.allows(origin))
+      )
         return res.status(403).json({
           error:
             "Cross-origin changes are not allowed. Pair this site from local Settings first.",
@@ -131,6 +137,7 @@ export async function createApp(
     return share;
   };
   const api = express.Router();
+  app.use("/api/device", devices.router());
   app.post("/api/connect", (req, res) => {
     res.json(
       pairings.connect(
@@ -140,6 +147,28 @@ export async function createApp(
     );
   });
   api.use(owner);
+  api.post("/devices/pair", (req, res) => {
+    if (pairings.valid(req)) throw new AppError(403, "Pair from the local PC.");
+    res.json(devices.start(z.string().parse(req.body.origin)));
+  });
+  api.get("/devices", (_req, res) =>
+    res.json(devices.records.map(({ hash, ...r }) => r)),
+  );
+  api.get("/devices/connection", (_req, res) =>
+    res.json({ port: devices.gatewayPort || null }),
+  );
+  api.post("/devices/gateway", async (req, res) => {
+    if (pairings.valid(req))
+      throw new AppError(403, "Enable from the local PC.");
+    res.json(await devices.openGateway());
+  });
+  api.delete("/devices/:id", async (req, res) => {
+    if (pairings.valid(req))
+      throw new AppError(403, "Revoke from the local PC.");
+    devices.records = devices.records.filter((r) => r.id !== req.params.id);
+    await devices.save();
+    res.json({ ok: true });
+  });
   api.post("/notes/trash", async (req, res) => {
     const ids = z.array(z.string().uuid()).min(1).max(500).parse(req.body.ids);
     res.json({ ids: await vault.trash(ids) });
@@ -1374,7 +1403,16 @@ export async function createApp(
           "The operation could not finish. Your saved notes are preserved. Check the input and try again.",
       });
   };
-  return { app, vault, providers, errors };
+  if (!options.test) {
+    try {
+      await fs.access(vault.file(".synapse/device-gateway.json"));
+      await devices.openGateway();
+    } catch (e: any) {
+      if (e.code !== "ENOENT")
+        console.error("Private sync gateway could not start:", e.message);
+    }
+  }
+  return { app, vault, providers, errors, devices };
 }
 function isLocal(address: string | undefined) {
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address || "");

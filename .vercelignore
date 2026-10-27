@@ -1,0 +1,9 @@
+work/
+vault/
+release/
+desktop-stage/
+desktop-dist/
+.env*
+.git/
+node_modules/
+*.log

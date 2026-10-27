@@ -1,0 +1,215 @@
+.tablet-app {
+  background: var(--canvas);
+  min-height: 100dvh;
+}
+.tablet-app > header {
+  position: sticky;
+  top: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.tablet-app > header span {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: auto;
+}
+.tablet-app button {
+  min-height: 42px;
+}
+.tablet-pages {
+  display: flex;
+  overflow: auto;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.tablet-note {
+  padding: 12px 16px;
+}
+.tablet-title {
+  font:
+    500 28px Lora,
+    serif;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  margin: 10px 0 20px;
+}
+.tablet-settings,
+.tablet-empty {
+  padding: 24px;
+  max-width: 760px;
+}
+.tablet-settings label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.tablet-settings button {
+  margin: 4px;
+}
+.tablet-error {
+  padding: 12px 16px;
+  background: var(--pale);
+}
+.tablet-mode .notebook-sheet-content {
+  min-height: 500px !important;
+  min-width: 1100px !important;
+}
+.tablet-mode .sheet-scroll {
+  overflow: auto;
+  touch-action: pan-x pan-y;
+}
+.tablet-mode .sheet-object {
+  position: absolute !important;
+  left: var(--tablet-object-x) !important;
+  top: var(--tablet-object-y) !important;
+  margin: 0 !important;
+  max-width: none !important;
+}
+.tablet-mode .sheet-object.kind-text {
+  width: var(--tablet-object-width) !important;
+  height: var(--tablet-object-height) !important;
+}
+.tablet-mode .sheet-object {
+  width: var(--tablet-object-width) !important;
+  height: var(--tablet-object-height) !important;
+}
+.tablet-mode .clean-sheet .sheet-toolbar {
+  top: 0;
+  position: relative;
+}
+.tablet-mode .sheet-tool-group span {
+  display: inline;
+}
+.tablet-mode .notebook-sheet-content.tool-pen,
+.tablet-mode .notebook-sheet-content.tool-eraser {
+  touch-action: pan-x pan-y;
+}
+.tablet-mode .tablet-finger .notebook-sheet-content {
+  touch-action: none;
+}
+.tablet-mode .object-grip,
+.tablet-mode .object-resize {
+  min-width: 24px;
+  min-height: 24px;
+}
+.tablet-mode .sheet-tool-group {
+  flex-wrap: wrap;
+}
+.tablet-mode .sheet-prose .note-editor {
+  min-height: 80px;
+}
+.tablet-mode .tablet-pencil .notebook-sheet-content,
+.tablet-mode .tablet-pencil .sheet-object {
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.tablet-mode .object-grip,
+.tablet-mode .object-resize {
+  touch-action: none;
+}
+.tablet-app {
+  color: var(--ink);
+}
+.tablet-app > header {
+  padding-top: max(10px, env(safe-area-inset-top));
+}
+.tablet-app > header strong {
+  font:
+    600 20px Geist,
+    Inter,
+    sans-serif;
+  letter-spacing: -0.025em;
+}
+.tablet-app button {
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 7px;
+}
+.tablet-pages button {
+  white-space: nowrap;
+  background: transparent;
+  border-color: transparent;
+}
+.tablet-pages button[aria-pressed="true"] {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--green);
+}
+.tablet-empty {
+  margin: 8vh auto;
+  max-width: 620px;
+}
+.tablet-empty h1 {
+  font:
+    400 42px/1.12 "Instrument Serif",
+    Lora,
+    serif;
+  letter-spacing: -0.025em;
+}
+.tablet-empty p,
+.tablet-settings p,
+.tablet-settings li {
+  line-height: 1.6;
+}
+.tablet-install {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 22px;
+}
+.tablet-settings {
+  margin: auto;
+}
+.tablet-settings h2 {
+  font-size: 24px;
+}
+.tablet-settings code {
+  overflow-wrap: anywhere;
+}
+.tablet-settings input {
+  min-height: 44px;
+  width: 100%;
+}
+.tablet-note {
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+@media (max-width: 540px) {
+  .tablet-app > header {
+    gap: 8px;
+  }
+  .tablet-app > header span {
+    order: 5;
+    width: 100%;
+  }
+  .tablet-app > header button {
+    padding: 7px 10px;
+  }
+  .tablet-title {
+    font-size: 25px;
+  }
+  .tablet-mode .sheet-toolbar {
+    gap: 8px;
+  }
+  .tablet-empty h1 {
+    font-size: 36px;
+  }
+}
+.tablet-mode
+  .tablet-pencil
+  .notebook-sheet-content:not(.tool-write):not(.tool-pen):not(.tool-eraser),
+.tablet-mode .tablet-pencil .tool-select .sheet-object {
+  touch-action: none;
+}
+.tablet-mode .sheet-prose {
+  width: min(calc(100vw - 40px), 1100px);
+  max-width: 100%;
+}
+.tablet-readonly .tablet-note {
+  pointer-events: none;
+  opacity: 0.6;
+}

@@ -861,7 +861,7 @@ const Editor = forwardRef<
           e.preventDefault();
           let href = a.getAttribute("href") || "";
           href = href.replace(/^\.\.\/(attachments|drawings)\//, "/files/$1/");
-          if (/^(https?:\/\/|\/files\/)/i.test(href))
+          if (/^(https?:\/\/|\/files\/|\/tablet\/files\/)/i.test(href))
             window.open(mediaUrl(href), "_blank", "noopener");
         }
       }}

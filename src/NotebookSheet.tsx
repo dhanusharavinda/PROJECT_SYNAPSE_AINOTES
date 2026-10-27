@@ -84,6 +84,7 @@ type Gesture = {
   rect: { left: number; top: number };
   kind?: Tool;
   lastTime?: number;
+  pointerId?: number;
 };
 const empty: NoteCanvas = { items: [], height: 500 },
   tableText =
@@ -694,13 +695,26 @@ export default forwardRef<
       rect: { left: rect.left, top: rect.top },
       kind,
       lastTime: e.timeStamp,
+      pointerId: e.pointerId,
     };
     if (next !== origin) preview(next);
     root.current?.setPointerCapture(e.pointerId);
     setActiveGesture(true);
+    if (document.body.classList.contains("tablet-mode"))
+      window.dispatchEvent(
+        new CustomEvent("synapse:pen-active", { detail: true }),
+      );
     return point;
   }
   function start(e: Pointer) {
+    if (gesture.current) return;
+    if (
+      document.body.classList.contains("tablet-mode") &&
+      e.pointerType === "touch" &&
+      ["pen", "eraser", "write"].includes(tool) &&
+      !(e.target as HTMLElement).closest(".tablet-finger")
+    )
+      return;
     if (
       e.button !== 0 ||
       (e.target as HTMLElement).closest(
@@ -812,6 +826,7 @@ export default forwardRef<
   function move(e: Pointer) {
     const g = gesture.current;
     if (!g) return;
+    if (g.pointerId !== undefined && g.pointerId !== e.pointerId) return;
     const point = at(e),
       dx = point[0] - g.start[0],
       dy = point[1] - g.start[1];
@@ -854,7 +869,8 @@ export default forwardRef<
     else
       items = items.map((i) => {
         if (i.id !== g.ids[0]) return i;
-        const coalesced = e.nativeEvent.getCoalescedEvents?.(),
+        const strokeRect = root.current!.getBoundingClientRect(),
+          coalesced = e.nativeEvent.getCoalescedEvents?.(),
           samples = coalesced?.length ? coalesced : [e.nativeEvent],
           pressures = [...(i.pressures || [1])],
           points =
@@ -863,12 +879,8 @@ export default forwardRef<
                   ...(i.points || []),
                   ...samples.map((sample) => {
                     const p: Point = [
-                      sample.clientX -
-                        root.current!.getBoundingClientRect().left -
-                        g.start[0],
-                      sample.clientY -
-                        root.current!.getBoundingClientRect().top -
-                        g.start[1],
+                      sample.clientX - strokeRect.left - g.start[0],
+                      sample.clientY - strokeRect.top - g.start[1],
                     ];
                     const last = g.last;
                     const absolute: Point = [
@@ -876,14 +888,19 @@ export default forwardRef<
                       p[1] + g.start[1],
                     ];
                     pressures.push(
-                      penWeight(
-                        Math.hypot(
-                          absolute[0] - last[0],
-                          absolute[1] - last[1],
-                        ),
-                        sample.timeStamp - (g.lastTime || sample.timeStamp),
-                        pressures.at(-1),
-                      ),
+                      sample.pointerType === "pen" && sample.pressure > 0
+                        ? Math.max(
+                            0.7,
+                            Math.min(1.3, 0.7 + sample.pressure * 0.6),
+                          )
+                        : penWeight(
+                            Math.hypot(
+                              absolute[0] - last[0],
+                              absolute[1] - last[1],
+                            ),
+                            sample.timeStamp - (g.lastTime || sample.timeStamp),
+                            pressures.at(-1),
+                          ),
                     );
                     g.last = absolute;
                     g.lastTime = sample.timeStamp;
@@ -916,6 +933,7 @@ export default forwardRef<
   function end(e: Pointer) {
     const g = gesture.current;
     if (!g) return;
+    if (g.pointerId !== undefined && g.pointerId !== e.pointerId) return;
     if (
       g.type === "draw" &&
       Math.hypot(at(e)[0] - g.last[0], at(e)[1] - g.last[1]) > 0.5
@@ -929,12 +947,24 @@ export default forwardRef<
       };
     gesture.current = undefined;
     setActiveGesture(false);
+    if (document.body.classList.contains("tablet-mode"))
+      window.dispatchEvent(
+        new CustomEvent("synapse:pen-active", { detail: false }),
+      );
     setMarquee(undefined);
     if (g.type !== "select") commit(next, g.origin);
     if (root.current?.hasPointerCapture(e.pointerId))
       root.current.releasePointerCapture(e.pointerId);
   }
   function objectDown(e: Pointer, item: CanvasItem) {
+    if (gesture.current) return;
+    if (
+      document.body.classList.contains("tablet-mode") &&
+      e.pointerType === "touch" &&
+      tool !== "select" &&
+      !(e.target as HTMLElement).closest(".tablet-finger")
+    )
+      return;
     if (e.button !== 0 || !["write", "select"].includes(tool)) return;
     fullSelection.current = false;
     if (e.shiftKey) {
@@ -1259,10 +1289,14 @@ export default forwardRef<
           onPointerUp={end}
           onPointerCancel={(e) => {
             const g = gesture.current;
-            if (g) {
+            if (g && g.pointerId === e.pointerId) {
               gesture.current = undefined;
               preview(g.origin);
               setActiveGesture(false);
+              if (document.body.classList.contains("tablet-mode"))
+                window.dispatchEvent(
+                  new CustomEvent("synapse:pen-active", { detail: false }),
+                );
               setMarquee(undefined);
             }
             if (root.current?.hasPointerCapture(e.pointerId))
@@ -1330,6 +1364,16 @@ export default forwardRef<
                     "--object-height":
                       (scene.width ? i.height : (i.height * viewWidth) / 1000) +
                       "px",
+                    "--tablet-object-width":
+                      (scene.width ? i.width : (i.width * viewWidth) / 1000) +
+                      "px",
+                    "--tablet-object-height":
+                      (scene.width ? i.height : (i.height * viewWidth) / 1000) +
+                      "px",
+                    "--tablet-object-x":
+                      (scene.width ? i.x : (i.x * viewWidth) / 1000) + "px",
+                    "--tablet-object-y":
+                      (scene.width ? i.y : (i.y * viewWidth) / 1000) + "px",
                     "--text-scale": i.textScale || 1,
                     left: scene.width ? i.x : i.x / 10 + "%",
                     top: scene.width ? i.y : (i.y * viewWidth) / 1000,

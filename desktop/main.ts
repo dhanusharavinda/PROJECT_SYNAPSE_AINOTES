@@ -30,6 +30,7 @@ if (process.env.SYNAPSE_DESKTOP_PROFILE)
 let mainWindow: BrowserWindow | null = null;
 let httpServer: Server | null = null;
 let vaultLock: NetServer | null = null;
+let closeDeviceGateway: (() => void) | undefined;
 let currentVault = "";
 let updates: ReturnType<typeof createUpdates> | undefined;
 
@@ -109,7 +110,8 @@ async function startNotebook(vault: string) {
   await acquireVaultLock(vault);
   process.env.SYNAPSE_APP_ROOT = electronApp.getAppPath();
   process.env.SYNAPSE_RESOURCES_PATH = process.resourcesPath;
-  const { app, vault: notebook, errors } = await createApp(vault);
+  const { app, vault: notebook, errors, devices } = await createApp(vault);
+  closeDeviceGateway = () => devices.closeGateway();
   await seed(notebook);
   const staticRoot = path.join(electronApp.getAppPath(), "dist");
   await fs.access(path.join(staticRoot, "index.html"));
@@ -411,6 +413,7 @@ if (!electronApp.requestSingleInstanceLock()) {
   electronApp.on("window-all-closed", () => electronApp.quit());
   electronApp.on("will-quit", () => {
     httpServer?.close();
+    closeDeviceGateway?.();
     vaultLock?.close();
   });
   electronApp.whenReady().then(async () => {
