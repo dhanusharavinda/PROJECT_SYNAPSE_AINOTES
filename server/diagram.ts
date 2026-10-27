@@ -7,6 +7,7 @@ export async function diagramSvg(diagram: Diagram) {
     ["geist", "geist-mono"].map(async (family) => {
       const weight = family === "geist" ? 600 : 400;
       const file = path.resolve(
+        process.env.SYNAPSE_APP_ROOT || ".",
         `node_modules/@fontsource/${family}/files/${family}-latin-${weight}-normal.woff2`,
       );
       const bytes = await fs.readFile(file);

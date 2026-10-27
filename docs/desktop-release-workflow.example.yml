@@ -1,0 +1,32 @@
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: powershell -ExecutionPolicy Bypass -File scripts/create-desktop-icon.ps1
+      - run: npm run desktop:installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/Synapse-Setup-*.exe
+            release/Synapse-Setup-*.exe.blockmap
+            release/latest.yml

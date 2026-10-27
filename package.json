@@ -1,14 +1,21 @@
 {
   "name": "synapse-local",
+  "productName": "Synapse",
+  "description": "A local-first study notebook with an intentional knowledge graph.",
+  "author": "Dhanusha Ravinda",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "main": "desktop-dist/main.mjs",
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts --production",
     "test": "vitest run",
     "check": "tsc --noEmit",
+    "desktop:compile": "esbuild desktop/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:electron --external:electron-updater --outfile=desktop-dist/main.mjs",
+    "desktop:unpacked": "npm run build && npm run desktop:compile && electron-builder --win nsis --dir",
+    "desktop:installer": "npm run build && npm run desktop:compile && electron-builder --win nsis",
     "postinstall": "node scripts/prepare-assets.mjs"
   },
   "dependencies": {
@@ -31,6 +38,7 @@
     "@tiptap/react": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
     "@xyflow/react": "^12.12.0",
+    "electron-updater": "^6.8.11",
     "express": "^5.3.0",
     "gray-matter": "^4.0.3",
     "jsdom": "^30.1.3",
@@ -59,6 +67,9 @@
     "@types/react-dom": "^19.3.0",
     "@types/supertest": "^7.2.1",
     "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "prettier": "^3.9.10",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
@@ -70,5 +81,50 @@
     "nanoid": "^5.1.16",
     "lodash-es": "^4.18.1",
     "katex": "^0.19.1"
+  },
+  "build": {
+    "appId": "com.dhanusharavinda.synapse",
+    "productName": "Synapse",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/@ffmpeg-installer/**/*",
+      "node_modules/tesseract.js/**/*",
+      "node_modules/tesseract.js-core/**/*",
+      "node_modules/@tesseract.js-data/**/*"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "desktop-dist/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts/hermes_speech.py",
+        "to": "scripts/hermes_speech.py"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png",
+      "artifactName": "Synapse-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "dhanusharavinda",
+      "repo": "PROJECT_SYNAPSE_AINOTES"
+    }
   }
 }

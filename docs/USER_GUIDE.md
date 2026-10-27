@@ -8,7 +8,9 @@ Synapse is a local notebook for understanding AI concepts and practicing intervi
 
 ## Open the app
 
-Double-click `Start Synapse.cmd` in the project folder, or run `npm start` after `npm run build`. Open http://127.0.0.1:4317. The launcher starts a hidden local server and reuses an existing Synapse server. It does not install an always-on Windows task.
+Install and open Synapse like a normal Windows application. On the first launch, create a vault in `Documents\Synapse` or choose an existing vault. The app starts its local notebook service automatically. It does not install an always-on Windows task and does not require a hosted backend.
+
+For contributor mode, double-click `Start Synapse.cmd` in the project folder, or run `npm start` after `npm run build`, then open http://127.0.0.1:4317.
 
 ## Create and edit
 
@@ -64,7 +66,9 @@ Localhost links work on this computer. For a trusted LAN, set SYNAPSE_ALLOWED_HO
 
 ## Files, backups, and recovery
 
-Back up the entire vault folder while the app is idle. Notes are `vault/notes/<stable-id>.md`, with YAML metadata and three Markdown explanation sections. Stable IDs avoid collisions between meanings and broken links after title changes. This format is readable by other editors, but app-specific sliders, typed relationships, and review states need Synapse. Full Obsidian plugin interoperability and arbitrary wiki-link import are not implemented.
+Back up the entire vault folder while the app is idle. In the installed app, the default is `Documents\Synapse`. Notes are `<vault>\notes\<stable-id>.md`, with YAML metadata and Markdown content. Stable IDs avoid collisions between meanings and broken links after title changes. This format is readable by other editors, but app-specific variants, typed relationships, and review states need Synapse. Full Obsidian plugin interoperability and arbitrary wiki-link import are not implemented.
+
+App updates replace the installed program, not the vault. Synapse checks published GitHub releases and asks before restarting into a downloaded update. Use **Help > Check for updates** to check manually. Use **File > Open vault folder** for backup and **File > Switch vault** to open another collection. See [Desktop app and updates](DESKTOP_APP.md).
 
 Attachments, drawings, maps, and audio live beside notes. `.synapse/state.json` holds sources, approved-proposal state, sharing links, reviews, and episode scripts. `.synapse/history` preserves note versions before replacement. `.synapse/settings.json` contains encrypted credentials and should remain private. `.synapse/outbox` records audio delivery state. Graph positions also export to JSON Canvas format. Browser storage is not authoritative.
 

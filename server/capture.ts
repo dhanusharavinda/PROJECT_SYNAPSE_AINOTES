@@ -208,7 +208,8 @@ export async function ocr(file: string) {
 }
 export async function videoSamples(file: string, directory: string) {
   await fs.mkdir(directory, { recursive: true });
-  await run(ffmpeg.path, [
+  const executable = ffmpeg.path.replace("app.asar", "app.asar.unpacked");
+  await run(executable, [
     "-hide_banner",
     "-loglevel",
     "error",

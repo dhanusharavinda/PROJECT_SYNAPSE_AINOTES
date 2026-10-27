@@ -2,6 +2,10 @@
 
 ## Current revision: 27 October 2026
 
+Desktop packaging is now the primary distribution direction. The Electron shell runs the existing local server on loopback, stores the selected vault outside the installation, offers vault switching and folder access, and checks GitHub Releases for updates. The installer leaves vault data untouched. Public distribution still needs a Windows code-signing certificate to establish publisher trust and reduce SmartScreen warnings.
+
+The Windows installer, update manifest, and block map built successfully with Electron 45. A packaged-app smoke run used a disposable external vault, loaded the compiled interface with HTTP 200, established the owner session, loaded `/api/bootstrap` with HTTP 200, found the eight seeded notes, and exited cleanly. The packaged Hermes helper and unpacked FFmpeg executable were present. TypeScript, 83 tests, the production build, desktop compilation, and the full dependency audit passed with zero known vulnerabilities after replacing the initially selected vulnerable Electron line. The generated installer is unsigned, as expected, and was not published as a public release. Auto-update discovery is implemented and the release manifest was generated, but an end-to-end update from an older signed public release cannot be verified until signing credentials and two release versions exist.
+
 The editor now supports freeform writing, optional definition variants, contextual formatting, inline transparent drawings, selected-text diagram approval, flexible tables, images, subpages, and lineage. The graph adds focused exploration, a directional relationship ledger, and explicit prerequisite paths. See [Current editor and graph](EDITOR_V2.md) for usage and current boundaries.
 
 83 automated tests, strict TypeScript, and the production build passed. Regression coverage includes saved empty paragraphs after drawings, stale refreshes, inline link removal, variants, table operations, portable attachment URLs, origin-specific pairing, scoped permissions, and diagram approval. The nonfatal drawing-library chunk warning remains.
