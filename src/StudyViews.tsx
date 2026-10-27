@@ -18,6 +18,7 @@ import {
   Search,
 } from "lucide-react";
 import { bodyOf, plainNote } from "./content";
+import { readableText } from "./studyText";
 import type { Bootstrap, Note, Source, Episode } from "./types";
 import { api, fileUrl } from "./api";
 import { Modal, MD, Busy, Empty } from "./ui";
@@ -589,7 +590,13 @@ export function Review({
             {hint && (
               <div className="hint">
                 <strong>A small cue</strong>
-                <p>{plainNote(note).split(/[.!?]/)[0]}.</p>
+                <p>
+                  {plainNote(note)
+                    .replace(/```[^]*?```|~~~[^]*?~~~/g, "")
+                    .split(/[.!?]/)[0] ||
+                    "Start with the main idea in your own words"}
+                  .
+                </p>
               </div>
             )}
             <label className="answer-label">
@@ -833,7 +840,7 @@ export function Audio({ data, refresh, notify }: Props) {
             <div className="actions wrap">
               <button
                 onClick={() => {
-                  setScript(episode.script);
+                  setScript(readableText(episode.script));
                   setEditing(!editing);
                 }}
               >
@@ -897,7 +904,7 @@ export function Audio({ data, refresh, notify }: Props) {
               </>
             ) : (
               <div className="podcast-script">
-                <MD text={episode.script} />
+                <MD text={readableText(episode.script)} />
               </div>
             )}
             {episode.file && (

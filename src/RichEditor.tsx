@@ -12,7 +12,6 @@ import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { TableKit } from "@tiptap/extension-table";
 import Image from "@tiptap/extension-image";
-import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import {
@@ -42,8 +41,10 @@ import { displayMarkdown, storageMarkdown } from "./markdown";
 import { mediaUrl } from "./api";
 import { usePreferences, keyCombination } from "./preferences";
 import { MediaImage } from "./editorMedia";
-import { copyText } from "./clipboard";
+import { copyText, readClipboard } from "./clipboard";
 import { repairNotebookMarkup } from "./content";
+import { youtubeLink } from "./youtube";
+import VideoPasteMenu from "./VideoPasteMenu";
 const editorDisplay = (text: string) =>
   displayMarkdown(repairNotebookMarkup(text)).replace(
     /\/files\/attachments\/[^\s)]+/g,
@@ -131,6 +132,7 @@ const Editor = forwardRef<
     onChange: (s: string) => void;
     onCommand: (cmd: string) => void;
     onUpload?: (file: File) => void;
+    onVideo?: (url: string, label: string) => void;
     readOnly?: boolean;
     onReady?: (e: CoreEditor) => void;
     compact?: boolean;
@@ -147,6 +149,7 @@ const Editor = forwardRef<
     onChange,
     onCommand,
     onUpload,
+    onVideo,
     readOnly = false,
     onReady,
     compact = false,
@@ -170,6 +173,13 @@ const Editor = forwardRef<
   currentValue.current = value;
   const [raw, setRaw] = useState(false);
   const [context, setContext] = useState<{ x: number; y: number }>();
+  const [videoPaste, setVideoPaste] = useState<{
+    url: string;
+    x: number;
+    y: number;
+  }>();
+  const videoCallback = useRef(onVideo);
+  videoCallback.current = onVideo;
   const [mediaTarget, setMediaTarget] = useState<HTMLElement>();
   const [slash, setSlash] = useState<{
     from: number;
@@ -196,6 +206,21 @@ const Editor = forwardRef<
   );
   const filteredRef = useRef(filtered);
   filteredRef.current = filtered;
+  function offerVideo(text: string, view: CoreEditor["view"]) {
+    const video = youtubeLink(text);
+    if (!video) return false;
+    captured.current = {
+      from: view.state.selection.from,
+      to: view.state.selection.to,
+    };
+    const coords = view.coordsAtPos(view.state.selection.from);
+    setVideoPaste({
+      url: text.trim(),
+      x: Math.max(8, Math.min(coords.left, innerWidth - 310)),
+      y: Math.max(8, Math.min(coords.bottom + 6, innerHeight - 260)),
+    });
+    return true;
+  }
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false, link: { openOnClick: false } }),
@@ -224,10 +249,6 @@ const Editor = forwardRef<
         onOpen: (id: string) => commandCallback.current("drawing:" + id),
         onFloat: (id: string) => placeRef.current?.("drawing", id),
         floatable: !!onPlace,
-      }),
-      Placeholder.configure({
-        placeholder:
-          "Write your note. Type / for blocks, or select text and right-click for more options.",
       }),
     ],
     content: editorDisplay(value),
@@ -375,6 +396,8 @@ const Editor = forwardRef<
           uploadCallback.current(file);
           return true;
         }
+        const text = event.clipboardData?.getData("text/plain");
+        if (text && offerVideo(text, view)) return true;
         return false;
       },
       handleDrop: (view, event) => {
@@ -424,9 +447,8 @@ const Editor = forwardRef<
         });
       } else if (cmd === "paste") {
         event.preventDefault();
-        void navigator.clipboard
-          .readText()
-          .then((text) => editor.commands.insertContent({ type: "text", text }))
+        void readClipboard()
+          .then(insertClipboardText)
           .catch(() => {});
       } else if (commandInfo.some((info) => info[0] === cmd)) {
         event.preventDefault();
@@ -466,6 +488,43 @@ const Editor = forwardRef<
         from: editor.state.selection.from,
         to: editor.state.selection.to,
       };
+  }
+  function insertClipboardText(text: string) {
+    if (!editor || !text) return;
+    if (editor.state.selection.$from.parent.type.name === "codeBlock") {
+      editor.view.dispatch(editor.state.tr.insertText(text));
+    } else if (!offerVideo(text, editor.view)) {
+      editor.commands.insertContent(
+        text.includes("\n")
+          ? text.split(/\r?\n/).map((line) => ({
+              type: "paragraph",
+              content: line ? [{ type: "text", text: line }] : [],
+            }))
+          : { type: "text", text },
+      );
+    }
+  }
+  function finishVideo(mode: "link" | "named" | "thumbnail", label: string) {
+    if (!editor || !videoPaste) return;
+    restore();
+    const title = label.trim() || "YouTube video";
+    if (mode === "thumbnail" && videoCallback.current) {
+      editor.commands.deleteSelection();
+      videoCallback.current(videoPaste.url, title);
+    } else {
+      const video = youtubeLink(videoPaste.url)!;
+      editor.commands.insertContent({
+        type: "text",
+        text: mode === "link" ? videoPaste.url : title,
+        marks: [
+          {
+            type: "link",
+            attrs: { href: video.url, target: "_blank", rel: "noreferrer" },
+          },
+        ],
+      });
+    }
+    setVideoPaste(undefined);
   }
   function restore() {
     if (!editor) return;
@@ -982,6 +1041,14 @@ const Editor = forwardRef<
           </div>,
           document.body,
         )}
+      {videoPaste && (
+        <VideoPasteMenu
+          x={videoPaste.x}
+          y={videoPaste.y}
+          onChoose={finishVideo}
+          allowThumbnail={!!onVideo}
+        />
+      )}
       {context &&
         createPortal(
           <div
@@ -993,6 +1060,7 @@ const Editor = forwardRef<
               top: Math.max(8, context.y),
             }}
             onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.preventDefault()}
             onWheel={(e) => e.stopPropagation()}
           >
             {mediaTarget && (
@@ -1025,6 +1093,36 @@ const Editor = forwardRef<
                 </button>
               </div>
             )}
+            <div className="context-clipboard">
+              {(["Copy", "Cut", "Paste"] as const).map((label) => (
+                <button
+                  role="menuitem"
+                  key={label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    restore();
+                    if (label === "Paste") {
+                      void readClipboard().then(insertClipboardText);
+                    } else {
+                      const selection = editor.state.selection;
+                      void copyText(
+                        editor.state.doc.textBetween(
+                          selection.from,
+                          selection.to,
+                          "\n",
+                        ),
+                      ).then(() => {
+                        if (label === "Cut")
+                          editor.commands.deleteRange(selection);
+                      });
+                    }
+                    setContext(undefined);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="context-format">
               {inlineButtons.slice(0, 8).map(([cmd, label, Icon]) => (
                 <button

@@ -78,25 +78,6 @@ export default function Settings({
       <div className="settings-grid">
         <section className="settings-card notebook-preferences">
           <h3>Writing & shortcuts</h3>
-          <label>
-            Note font
-            <select
-              aria-label="Note font"
-              value={preferences.font}
-              onChange={(e) =>
-                savePreferences({
-                  ...preferences,
-                  font: e.target.value as "default" | "handwritten",
-                })
-              }
-            >
-              <option value="default">Book</option>
-              <option value="handwritten">Handwritten</option>
-            </select>
-          </label>
-          <p className={"font-preview " + preferences.font}>
-            Make room for your next idea.
-          </p>
           <p className="small muted">
             Choose a feature and press your keys. Backspace clears a shortcut.
             Single keys work outside writing. Use Ctrl or Alt while typing.

@@ -168,7 +168,7 @@ export async function createApp(
   );
   api.post("/notes", async (req, res) => {
     const input = noteSchema.parse({
-      context: "Machine learning",
+      context: "",
       group: "Unsorted",
       layers: { intuition: "", technical: "", implementation: "" },
       links: [],
@@ -954,7 +954,7 @@ export async function createApp(
           ? notes[0].title + " | Revision"
           : `${notes.length} concepts | Revision`,
       noteIds: data.noteIds,
-      script: script.slice(0, 12000),
+      script: speechText(script).slice(0, 12000),
       created: new Date().toISOString(),
     };
     await vault.mutate((s) => {
@@ -966,7 +966,9 @@ export async function createApp(
     await vault.mutate((s) => {
       const e = s.episodes.find((x) => x.id === req.params.id);
       if (!e) throw new AppError(404, "Episode not found.");
-      e.script = z.string().min(1).max(12000).parse(req.body.script);
+      e.script = speechText(
+        z.string().min(1).max(12000).parse(req.body.script),
+      );
       e.file = undefined;
     });
     res.json({ ok: true });
@@ -992,7 +994,11 @@ export async function createApp(
       "-" +
       uid() +
       (provider === "local" ? ".wav" : provider === "hermes" ? ".ogg" : ".mp3");
-    await providers.speech(e.script, vault.file("audio/" + file), provider);
+    await providers.speech(
+      speechText(e.script),
+      vault.file("audio/" + file),
+      provider,
+    );
     await vault.mutate((s) => {
       const current = s.episodes.find((x) => x.id === e.id)!;
       if (current.script !== e.script)

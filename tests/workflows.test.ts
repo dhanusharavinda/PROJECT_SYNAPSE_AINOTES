@@ -151,15 +151,13 @@ describe("local notebook integrity", () => {
     expect(canvas.nodes[0].file).toBe("notes/" + note.id + ".md");
     expect(canvas.nodes[0].x).toBe(200);
   });
-  it("seeds a consistent linked notebook only when empty", async () => {
+  it("starts empty without bundled subject-specific notes", async () => {
     const another = new Vault(path.join(root, "seed"));
     await another.init();
     await seed(another);
-    expect(await another.notes()).toHaveLength(8);
+    expect(await another.notes()).toHaveLength(0);
     await seed(another);
-    expect(await another.notes()).toHaveLength(8);
-    const notes = await another.notes();
-    expect(notes.find((n) => n.title === "Embeddings")?.links).toHaveLength(2);
+    expect(await another.notes()).toHaveLength(0);
   });
 });
 describe("access boundaries", () => {

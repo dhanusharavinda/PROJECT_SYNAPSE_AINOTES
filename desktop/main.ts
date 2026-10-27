@@ -1,6 +1,7 @@
 import {
   app as electronApp,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -235,6 +236,26 @@ async function switchVault() {
 }
 
 function installMenu() {
+  ipcMain.handle(
+    "synapse:clipboard",
+    (event, action: string, text?: string) => {
+      if (
+        event.sender !== mainWindow?.webContents ||
+        event.senderFrame !== event.sender.mainFrame
+      )
+        throw new Error("Clipboard access is limited to the notebook window.");
+      if (action === "read") return clipboard.readText();
+      if (
+        action === "write" &&
+        typeof text === "string" &&
+        text.length <= 1000000
+      ) {
+        clipboard.writeText(text);
+        return;
+      }
+      throw new Error("Unsupported clipboard action.");
+    },
+  );
   ipcMain.on("synapse:native-edit", (event, command: string) => {
     if (
       event.sender !== mainWindow?.webContents ||

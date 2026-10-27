@@ -89,6 +89,14 @@ export default function App() {
     localStorage.setItem("synapse-theme", theme);
     window.dispatchEvent(new Event("synapse:theme"));
   }, [theme]);
+  useEffect(() => {
+    const cycle = () =>
+      setTheme((t) =>
+        t === "light" ? "dark" : t === "dark" ? "paper" : "light",
+      );
+    window.addEventListener("synapse:cycle-theme", cycle);
+    return () => window.removeEventListener("synapse:cycle-theme", cycle);
+  }, []);
   function openCreate(
     parentId?: string,
     callback?: (n: Note) => Promise<void>,
@@ -99,7 +107,7 @@ export default function App() {
   }
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
-  const [newContext, setNewContext] = useState("Machine learning");
+  const [newContext, setNewContext] = useState("");
   const [newGroup, setNewGroup] = useState("Unsorted");
   const [practice, setPractice] = useState<string>();
   const [sidebar, setSidebar] = useState(
@@ -156,9 +164,7 @@ export default function App() {
       setSelected((id) =>
         dirty.current || d.notes.some((n) => n.id === id)
           ? id
-          : d.notes.find((n) => n.title === "Embeddings")?.id ||
-            d.notes[0]?.id ||
-            "",
+          : d.notes[0]?.id || "",
       );
       setError("");
     } catch (e) {
@@ -515,6 +521,31 @@ export default function App() {
               <Menu size={18} />
             </button>
             <span>Synapse</span>
+            {view !== "notes" && (
+              <button
+                className="compact-theme"
+                aria-label={`Theme: ${theme}. Switch theme`}
+                title="Switch theme"
+                onClick={() =>
+                  setTheme(
+                    theme === "light"
+                      ? "dark"
+                      : theme === "dark"
+                        ? "paper"
+                        : "light",
+                  )
+                }
+              >
+                {theme === "light" ? (
+                  <Sun size={17} />
+                ) : theme === "dark" ? (
+                  <Moon size={17} />
+                ) : (
+                  <FileText size={17} />
+                )}
+                <span>{theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
+              </button>
+            )}
           </div>
         )}
         {error && (
@@ -733,6 +764,7 @@ export default function App() {
                   noteDate: newDate || undefined,
                   parentId: creationParent,
                 });
+                sessionStorage.setItem("synapse-new-note:" + n.id, "1");
                 if (createdCallback.current) await createdCallback.current(n);
                 await refresh();
                 setCreate(false);

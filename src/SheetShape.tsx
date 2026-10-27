@@ -1,5 +1,7 @@
 import type { CanvasItem } from "./types";
-export default function SheetShape({ item }: { item: CanvasItem }) {
+import { penOutline } from "./penStroke";
+import { memo } from "react";
+function SheetShape({ item }: { item: CanvasItem }) {
   const color = item.color || "#24392f",
     sw = item.strokeWidth || 2.4,
     w = item.width,
@@ -62,8 +64,14 @@ export default function SheetShape({ item }: { item: CanvasItem }) {
           points={`${w / 2},4 ${w - 4},${h - 4} 4,${h - 4}`}
           {...common}
         />
-      ) : pts.length === 1 ? (
+      ) : pts.length === 1 ||
+        (item.kind === "pen" &&
+          pts.every(
+            (p) => Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]) < 0.1,
+          )) ? (
         <circle cx={pts[0][0]} cy={pts[0][1]} r={sw / 2} fill={color} />
+      ) : item.kind === "pen" ? (
+        <path d={penOutline(item)} fill={color} />
       ) : (
         <polyline
           points={pts.map((p) => p.join(",")).join(" ")}
@@ -74,3 +82,4 @@ export default function SheetShape({ item }: { item: CanvasItem }) {
     </svg>
   );
 }
+export default memo(SheetShape);

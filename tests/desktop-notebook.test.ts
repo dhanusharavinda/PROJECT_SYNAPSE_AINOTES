@@ -35,6 +35,47 @@ it("rereads external deletions and refuses to recreate them from a stale autosav
   await seed(reopened);
   expect(await reopened.notes()).toHaveLength(0);
 });
+it("persists video cards and speed-sensitive pen points without subject-specific defaults", async () => {
+  const n = (
+    await owner("post", "/api/notes").send({ title: "My subject", body: "" })
+  ).body;
+  expect(n.context).toBe("");
+  const canvas = {
+    width: 1000,
+    height: 500,
+    items: [
+      {
+        id: crypto.randomUUID(),
+        kind: "video",
+        src: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        text: "My reference",
+        x: 10,
+        y: 10,
+        width: 280,
+        height: 210,
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: "pen",
+        points: [
+          [4, 4],
+          [14, 20],
+        ],
+        pressures: [1, 0.9],
+        strokeWidth: 3,
+        x: 300,
+        y: 40,
+        width: 20,
+        height: 30,
+      },
+    ],
+  };
+  await owner("put", "/api/notes/" + n.id)
+    .send({ ...n, canvas })
+    .expect(200);
+  const reopened = await app.vault.note(n.id);
+  expect(reopened.canvas).toEqual(canvas);
+});
 it("saves and clears a note date and preserves pixel geometry and additional shapes", async () => {
   const note = (
     await owner("post", "/api/notes").send({
@@ -131,14 +172,34 @@ it("shares explicitly placed images without granting unrelated vault files", asy
     .get("/files/attachments/" + privateImage + "?share=" + share.id)
     .expect(403);
 });
-it("accepts graph-view position keys and exports actual Markdown note identifiers",async()=>{
-  const note=(await owner("post","/api/notes").send({title:"Graph positions"})).body;
-  const key=`focus-${note.id}-${note.id}`;
-  await owner("post","/api/positions").send({[key]:{x:155,y:85,pinned:false}}).expect(200);
-  expect((await owner("get","/api/bootstrap")).body.positions[key]).toEqual({x:155,y:85,pinned:false});
-  const canvas=JSON.parse(await fs.readFile(path.join(root,"maps","knowledge-graph.canvas"),"utf8"));
-  expect(canvas.nodes[0]).toMatchObject({id:note.id,file:`notes/${note.id}.md`,x:155,y:85});
-  await owner("post","/api/positions").send({"focus-invalid":{x:1,y:2,pinned:false}}).expect(400);
+it("accepts graph-view position keys and exports actual Markdown note identifiers", async () => {
+  const note = (
+    await owner("post", "/api/notes").send({ title: "Graph positions" })
+  ).body;
+  const key = `focus-${note.id}-${note.id}`;
+  await owner("post", "/api/positions")
+    .send({ [key]: { x: 155, y: 85, pinned: false } })
+    .expect(200);
+  expect((await owner("get", "/api/bootstrap")).body.positions[key]).toEqual({
+    x: 155,
+    y: 85,
+    pinned: false,
+  });
+  const canvas = JSON.parse(
+    await fs.readFile(
+      path.join(root, "maps", "knowledge-graph.canvas"),
+      "utf8",
+    ),
+  );
+  expect(canvas.nodes[0]).toMatchObject({
+    id: note.id,
+    file: `notes/${note.id}.md`,
+    x: 155,
+    y: 85,
+  });
+  await owner("post", "/api/positions")
+    .send({ "focus-invalid": { x: 1, y: 2, pinned: false } })
+    .expect(400);
 });
 it("keeps a note editable when a linked note is deleted", async () => {
   const first = (

@@ -13,6 +13,9 @@ const bridge: UpdateBridge = {
 };
 contextBridge.exposeInMainWorld("synapseUpdates", bridge);
 contextBridge.exposeInMainWorld("synapseEditing", {
+  readClipboard: () => ipcRenderer.invoke("synapse:clipboard", "read"),
+  writeClipboard: (text: string) =>
+    ipcRenderer.invoke("synapse:clipboard", "write", text),
   native: (command: string) => ipcRenderer.send("synapse:native-edit", command),
   subscribe(listener: (command: string) => void) {
     const handler = (_event: unknown, command: string) => listener(command);

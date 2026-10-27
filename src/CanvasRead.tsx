@@ -3,6 +3,7 @@ import type { NoteCanvas } from "./types";
 import { fileUrl } from "./api";
 import { MD } from "./ui";
 import SheetShape from "./SheetShape";
+import VideoCard from "./VideoCard";
 export default function CanvasRead({
   canvas,
   share,
@@ -74,6 +75,8 @@ export default function CanvasRead({
             >
               {item.kind === "text" || item.kind === "table" ? (
                 <MD text={item.text || ""} share={share} />
+              ) : item.kind === "video" ? (
+                <VideoCard url={item.src || ""} title={item.text} />
               ) : item.kind === "image" || item.kind === "drawing" ? (
                 <img
                   src={src}

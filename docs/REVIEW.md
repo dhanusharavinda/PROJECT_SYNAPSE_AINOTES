@@ -1,5 +1,17 @@
 # Build review
 
+## Writing and clipboard fixes, version 1.2.1
+
+Removed the repeated empty-editor placeholder and all bundled subject-specific starter data and defaults. A fresh notebook is empty. Existing user files remain intact. A new note has one short slash-link cue that fades and unmounts after five seconds, including under React Strict Mode. Theme and Book/Handwritten controls are in the sheet toolbar. Selected objects expose Copy and Delete; selection context capture takes precedence over the text menu in Select mode.
+
+The desktop clipboard bridge reads/writes plain text through a main-window, top-frame-only IPC endpoint. Text context menus include Copy, Cut, and Paste. Normal same-page paste, code copying, multiline code paste, selection deletion and undo, and autosave have browser or packaged interaction coverage. Physical operating-system menu accelerators are not driven by CDP; their routing retains the separate unit coverage. The hidden packaged window cannot reliably provide a screenshot, so production-browser captures provide the visual evidence.
+
+Pen outlines use quadratic smoothing with modest filtered speed-based widths. Empty coalesced pointer-event lists fall back to the original event. Width ratios survive saving and partial erasure, while stationary clicks remain visible dots. YouTube paste offers an original link, a named link, or a movable/resizable thumbnail, preserves URL timestamps, focuses and selects the name field, and supports Enter and Escape. Thumbnail loading is an online image request, not video transcription or analysis.
+
+Readable study text removes formatting tags and notebook directives from recall cues and scripts, while preserving literal fenced and inline code for model context. Existing scripts are cleaned for display and speech. An independent read-only agent reviewed distribution and the clipboard, selection, pen, and video changes. Its actionable findings were corrected before release.
+
+121 automated tests pass. Strict TypeScript, production client build, desktop compilation, and Windows NSIS build pass. Browser receipts cover same-page clipboard, visible selection deletion, smooth saved ink, theme/font switching, YouTube options and keyboard focus, timestamp preservation, thumbnail movement/resizing, transient onboarding, autosave, clean hints, and clean narration. Production inspection at 1440, 768, and 390 pixels reports zero failures and two documented advisories for compact controls and a pen SVG classified as a chart. All twelve initial/production captures were opened. Release assets, hashes, and final update-channel checks are recorded in the handoff after publication.
+
 ## Free notebook revision, version 1.2.0
 
 This revision replaces the shifting object toolbar with right-click actions and a small selection grip. Geometry is stored in pixel coordinates with a saved page width; older relative layouts convert when edited. Pointer capture uses page coordinates, coalesced pen input, and animation-frame rendering. Pen dots, a partial-stroke eraser, additional shapes, marquee and group movement, whole-note copy/delete with undo, precise blank-space writing, and two-axis table sizing are implemented. Text formatting and table operations stay in context menus. Paper measures the writing baseline. One button cycles the three themes. All notes adds search, grouping, sorting, optional dates, and multi-delete. Shortcut assignments cover drawing, formatting, files, navigation, and saving.

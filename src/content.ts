@@ -1,4 +1,5 @@
 import type { Note } from "./types";
+import { readableText } from "./studyText";
 export interface VariantText {
   label: string;
   body: string;
@@ -6,19 +7,27 @@ export interface VariantText {
 // Repair the old missing block separators without stripping literal fenced examples.
 export function repairNotebookMarkup(source: string) {
   let fence = "";
-  return source.replace(/\r\n/g, "\n").split("\n").map(line => {
-    const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
-    if (match) {
-      if (!fence) fence = match[1];
-      else if (match[1][0] === fence[0] && match[1].length >= fence.length) {
-        fence = "";
-        if (match[2].trim() && /:::drawing\s+\{/.test(match[2]))
-          line = match[1] + "\n\n" + match[2].trim();
+  return source
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => {
+      const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+      if (match) {
+        if (!fence) fence = match[1];
+        else if (match[1][0] === fence[0] && match[1].length >= fence.length) {
+          fence = "";
+          if (match[2].trim() && /:::drawing\s+\{/.test(match[2]))
+            line = match[1] + "\n\n" + match[2].trim();
+        }
       }
-    }
-    if (!fence) line = line.replace(/([^\n])(:::(?:drawing)\s+\{[^\n]*?\}\s*:::)/g, "$1\n\n$2");
-    return line;
-  }).join("\n");
+      if (!fence)
+        line = line.replace(
+          /([^\n])(:::(?:drawing)\s+\{[^\n]*?\}\s*:::)/g,
+          "$1\n\n$2",
+        );
+      return line;
+    })
+    .join("\n");
 }
 export function variantsMarkdown(options: VariantText[]) {
   return `:::variants\n\n${options.map((o) => `:::option ${JSON.stringify({ label: o.label })}\n\n${o.body}\n\n:::endoption`).join("\n\n")}\n\n:::endvariants`;
@@ -113,18 +122,13 @@ export function bodyOf(note: Note) {
     .trim();
 }
 export function plainNote(note: Note) {
-  return (
+  return readableText(
     bodyOf(note) +
-    (note.canvas?.items
-      .filter((item) => item.kind === "text" || item.kind === "table")
-      .map((item) => "\n\n" + (item.text || ""))
-      .join("") || "")
-  )
-    .replace(/^:::option.*$/gm, "")
-    .replace(/^:::(?:variants|endvariants)\s*$/gm, "")
-    .replace(/^:::endoption\s*$/gm, "")
-    .replace(/^:::drawing.*$/gm, "[Drawing in note]")
-    .trim();
+      (note.canvas?.items
+        .filter((item) => item.kind === "text" || item.kind === "table")
+        .map((item) => "\n\n" + (item.text || ""))
+        .join("") || ""),
+  );
 }
 export function inlineTargets(body: string) {
   const clean = body.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`/g, "");

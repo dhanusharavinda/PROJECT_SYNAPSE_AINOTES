@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Students learning AI and preparing for AI engineer interviews. Their information is spread across articles, roadmaps, PDFs, images, and videos. They use a notebook for sustained writing, explanation, and revision.
+Students organizing their studies across articles, PDFs, images, and videos. They use a notebook for sustained writing, explanation, and revision. The notebook has no built-in subject or curriculum.
 
 ## Product Purpose
 

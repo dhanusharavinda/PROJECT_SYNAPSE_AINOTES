@@ -15,7 +15,7 @@ Download `Synapse-Setup-<version>.exe` from GitHub Releases and run it. On first
 1. Create a new vault in `Documents\Synapse`.
 2. Choose an existing Synapse vault.
 
-Install the app once. Future signed GitHub releases are detected inside Synapse, downloaded, and offered as a restart. Notes remain in the vault during an update. Until the Windows installer is code signed, Windows may show a SmartScreen warning. See [Desktop app and updates](docs/DESKTOP_APP.md).
+Install the app once. Published GitHub updates appear inside Synapse; choose Download, then Restart and update. Notes remain in the vault during an update. Until the Windows installer is code signed, Windows may show a SmartScreen warning. See [Desktop app and updates](docs/DESKTOP_APP.md) and [Send Synapse to someone](docs/SHARE_THE_APP.md).
 
 ## Start
 

@@ -2,7 +2,19 @@ export type Layer = "intuition" | "technical" | "implementation";
 export type Relation = "related" | "prerequisite" | "used-in" | "contrasts";
 export interface CanvasItem {
   id: string;
-  kind: "text" | "table" | "image" | "drawing" | "pen" | "arrow" | "rectangle" | "ellipse" | "diamond" | "triangle" | "line";
+  kind:
+    | "text"
+    | "table"
+    | "image"
+    | "drawing"
+    | "video"
+    | "pen"
+    | "arrow"
+    | "rectangle"
+    | "ellipse"
+    | "diamond"
+    | "triangle"
+    | "line";
   x: number;
   y: number;
   width: number;
@@ -14,6 +26,7 @@ export interface CanvasItem {
   points?: [number, number][];
   fitted?: boolean;
   strokeWidth?: number;
+  pressures?: number[];
 }
 export interface NoteCanvas {
   items: CanvasItem[];

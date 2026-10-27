@@ -25,15 +25,24 @@ import {
   Undo2,
   Minus,
   ChevronDown,
+  Trash2,
+  Copy,
+  Sun,
+  Moon,
+  FileText,
 } from "lucide-react";
+import { penWeight } from "./penStroke";
 import type { CanvasItem, NoteCanvas } from "./types";
 import { fileUrl, mediaUrl } from "./api";
 import RichEditor, { type EditorHandle } from "./RichEditor";
-import { keyCombination, usePreferences } from "./preferences";
+import { keyCombination, usePreferences, savePreferences } from "./preferences";
 import { storageMarkdown } from "./markdown";
-import { copyText } from "./clipboard";
+import { copyText, readClipboard } from "./clipboard";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import SheetShape from "./SheetShape";
+import VideoCard from "./VideoCard";
+import VideoPasteMenu from "./VideoPasteMenu";
+import { youtubeLink } from "./youtube";
 import {
   finishStroke,
   migrateScene,
@@ -61,6 +70,7 @@ export interface SheetHandle {
   tool: (tool: Tool) => void;
   image: (src: string, alt: string) => void;
   drawing: (id: string) => void;
+  video: (url: string, label: string) => void;
   editor: () => EditorHandle | null;
   block: (kind: "table" | "text", markdown: string) => void;
 }
@@ -72,6 +82,7 @@ type Gesture = {
   ids: string[];
   rect: { left: number; top: number };
   kind?: Tool;
+  lastTime?: number;
 };
 const empty: NoteCanvas = { items: [], height: 500 },
   tableText =
@@ -127,11 +138,25 @@ export default forwardRef<
     history = useRef<NoteCanvas[]>([]),
     future = useRef<NoteCanvas[]>([]);
   const pasteTarget = useRef<HTMLTextAreaElement>(null);
+  const [pendingVideo, setPendingVideo] = useState<{
+    url: string;
+    x: number;
+    y: number;
+  }>();
   const editors = useRef(new Map<string, EditorHandle>()),
     pref = usePreferences(),
     active = useRef(false),
     [drawingVersion, setDrawingVersion] = useState(0);
   const [viewWidth, setViewWidth] = useState(1000);
+  const [theme, setTheme] = useState(
+    document.documentElement.dataset.theme || "light",
+  );
+  useEffect(() => {
+    const update = () =>
+      setTheme(document.documentElement.dataset.theme || "light");
+    window.addEventListener("synapse:theme", update);
+    return () => window.removeEventListener("synapse:theme", update);
+  }, []);
   useEffect(() => {
     let live = true;
     const measure = () => {
@@ -378,11 +403,13 @@ export default forwardRef<
       ...copiedItems.map((item) =>
         item.kind === "text" || item.kind === "table"
           ? item.text || ""
-          : item.kind === "image"
-            ? `![${item.text || "Image"}](${item.src})`
-            : item.kind === "drawing"
-              ? `![Drawing](../drawings/${item.drawingId}.svg)`
-              : `[${item.kind === "pen" ? "Drawing" : item.kind}]`,
+          : item.kind === "video"
+            ? `[${item.text || "YouTube video"}](${item.src})`
+            : item.kind === "image"
+              ? `![${item.text || "Image"}](${item.src})`
+              : item.kind === "drawing"
+                ? `![Drawing](../drawings/${item.drawingId}.svg)`
+                : `[${item.kind === "pen" ? "Drawing" : item.kind}]`,
       ),
     ]
       .filter(Boolean)
@@ -400,9 +427,18 @@ export default forwardRef<
     let text = copiedProse;
     try {
       const clipboard = (
-        provided === undefined ? await navigator.clipboard.readText() : provided
+        provided === undefined ? await readClipboard() : provided
       ).replace(/\r\n/g, "\n");
       if (clipboard !== copiedPlain) {
+        if (youtubeLink(clipboard)) {
+          const rect = root.current!.getBoundingClientRect();
+          setPendingVideo({
+            url: clipboard,
+            x: Math.max(8, Math.min(rect.left + 24, innerWidth - 310)),
+            y: Math.max(8, Math.min(rect.top + 30, innerHeight - 260)),
+          });
+          return;
+        }
         if (clipboard)
           add(
             {
@@ -488,6 +524,8 @@ export default forwardRef<
       }),
     drawing: (drawingId) =>
       add({ kind: "drawing", drawingId, ...place(), width: 280, height: 210 }),
+    video: (src, text) =>
+      add({ kind: "video", src, text, ...place(), width: 280, height: 210 }),
     editor: () =>
       selected.length === 1 ? editors.current.get(selected[0]) || null : null,
     block: (kind, text) =>
@@ -562,7 +600,9 @@ export default forwardRef<
       )
         return;
       event.preventDefault();
-      if (window.synapseEditing) window.synapseEditing.native("paste");
+      if (window.synapseEditing?.readClipboard)
+        void paste().finally(() => focus());
+      else if (window.synapseEditing) window.synapseEditing.native("paste");
       else
         void paste().finally(() => {
           if (document.activeElement === pasteTarget.current) focus();
@@ -650,6 +690,7 @@ export default forwardRef<
       ids,
       rect: { left: rect.left, top: rect.top },
       kind,
+      lastTime: e.timeStamp,
     };
     if (next !== origin) preview(next);
     root.current?.setPointerCapture(e.pointerId);
@@ -751,6 +792,7 @@ export default forwardRef<
           color,
           strokeWidth: size,
           points: [[0, 0]],
+          pressures: [1],
         },
       ],
     });
@@ -804,22 +846,41 @@ export default forwardRef<
     else
       items = items.map((i) => {
         if (i.id !== g.ids[0]) return i;
-        const samples = e.nativeEvent.getCoalescedEvents?.() || [e.nativeEvent],
+        const coalesced = e.nativeEvent.getCoalescedEvents?.(),
+          samples = coalesced?.length ? coalesced : [e.nativeEvent],
+          pressures = [...(i.pressures || [1])],
           points =
             g.kind === "pen"
               ? [
                   ...(i.points || []),
-                  ...samples.map(
-                    (sample) =>
-                      [
-                        sample.clientX -
-                          root.current!.getBoundingClientRect().left -
-                          g.start[0],
-                        sample.clientY -
-                          root.current!.getBoundingClientRect().top -
-                          g.start[1],
-                      ] as Point,
-                  ),
+                  ...samples.map((sample) => {
+                    const p: Point = [
+                      sample.clientX -
+                        root.current!.getBoundingClientRect().left -
+                        g.start[0],
+                      sample.clientY -
+                        root.current!.getBoundingClientRect().top -
+                        g.start[1],
+                    ];
+                    const last = g.last;
+                    const absolute: Point = [
+                      p[0] + g.start[0],
+                      p[1] + g.start[1],
+                    ];
+                    pressures.push(
+                      penWeight(
+                        Math.hypot(
+                          absolute[0] - last[0],
+                          absolute[1] - last[1],
+                        ),
+                        sample.timeStamp - (g.lastTime || sample.timeStamp),
+                        pressures.at(-1),
+                      ),
+                    );
+                    g.last = absolute;
+                    g.lastTime = sample.timeStamp;
+                    return p;
+                  }),
                 ].slice(-15000)
               : ([
                   [0, 0],
@@ -828,6 +889,7 @@ export default forwardRef<
         return {
           ...i,
           points,
+          pressures: g.kind === "pen" ? pressures.slice(-15000) : undefined,
           width: Math.max(1, Math.abs(dx)),
           height: Math.max(1, Math.abs(dy)),
         };
@@ -846,6 +908,11 @@ export default forwardRef<
   function end(e: Pointer) {
     const g = gesture.current;
     if (!g) return;
+    if (
+      g.type === "draw" &&
+      Math.hypot(at(e)[0] - g.last[0], at(e)[1] - g.last[1]) > 0.5
+    )
+      move(e);
     let next = latest.current;
     if (g.type === "draw")
       next = {
@@ -899,6 +966,41 @@ export default forwardRef<
       className={`notebook-sheet clean-sheet font-${pref.font}`}
       aria-label="Notebook sheet"
     >
+      {pendingVideo && (
+        <VideoPasteMenu
+          x={pendingVideo.x}
+          y={pendingVideo.y}
+          onChoose={(mode, label) => {
+            const url = youtubeLink(pendingVideo.url)!.url;
+            const title = label.trim() || "YouTube video";
+            if (mode === "thumbnail")
+              add({
+                kind: "video",
+                src: url,
+                text: title,
+                ...place(),
+                width: 280,
+                height: 210,
+              });
+            else
+              add(
+                {
+                  kind: "text",
+                  text:
+                    mode === "link"
+                      ? url
+                      : `[${title.replace(/[\[\]\\]/g, "")}](${url})`,
+                  ...place(),
+                  width: 360,
+                  height: 60,
+                },
+                true,
+              );
+            setPendingVideo(undefined);
+            if (mode === "thumbnail") focus();
+          }}
+        />
+      )}
       <textarea
         ref={pasteTarget}
         tabIndex={-1}
@@ -970,6 +1072,57 @@ export default forwardRef<
           </button>
         </div>
         <div className="sheet-tool-group">
+          <button
+            aria-label={`Theme: ${theme}. Switch theme`}
+            title="Switch theme: Light, Dark, Paper"
+            onClick={() =>
+              window.dispatchEvent(new Event("synapse:cycle-theme"))
+            }
+          >
+            {theme === "dark" ? (
+              <Moon size={16} />
+            ) : theme === "paper" ? (
+              <FileText size={16} />
+            ) : (
+              <Sun size={16} />
+            )}
+            <span>{theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
+          </button>
+          <button
+            className="font-cycle"
+            aria-label={`Font: ${pref.font === "handwritten" ? "Handwritten" : "Book"}. Switch font`}
+            title="Switch between Book and Handwritten"
+            onClick={() =>
+              savePreferences({
+                ...pref,
+                font: pref.font === "default" ? "handwritten" : "default",
+              })
+            }
+          >
+            <Type size={16} />
+            <span>{pref.font === "handwritten" ? "Handwritten" : "Book"}</span>
+          </button>
+          {(selected.length > 0 || fullSelection.current) &&
+            tool === "select" && (
+              <>
+                <button
+                  aria-label="Copy selection"
+                  title="Copy selection"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void copy()}
+                >
+                  <Copy size={16} />
+                </button>
+                <button
+                  aria-label="Delete selection"
+                  title="Delete selection"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => remove()}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            )}
           <input
             aria-label="Pen color"
             type="color"
@@ -1054,6 +1207,20 @@ export default forwardRef<
           onFocus={() => {
             active.current = true;
           }}
+          onContextMenuCapture={(e) => {
+            if (
+              tool !== "select" ||
+              (!selected.length && !fullSelection.current)
+            )
+              return;
+            e.preventDefault();
+            e.stopPropagation();
+            focus();
+            setMenu({
+              x: Math.max(8, Math.min(e.clientX, innerWidth - 250)),
+              y: Math.max(8, Math.min(e.clientY, innerHeight - 380)),
+            });
+          }}
           onPaste={(event) => {
             if ((event.target as HTMLElement).closest("[contenteditable=true]"))
               return;
@@ -1122,6 +1289,8 @@ export default forwardRef<
                 )}
                 {shape ? (
                   <SheetShape item={i} />
+                ) : i.kind === "video" ? (
+                  <VideoCard url={i.src || ""} title={i.text} editable />
                 ) : i.kind === "image" || i.kind === "drawing" ? (
                   <img
                     draggable={false}
@@ -1162,6 +1331,16 @@ export default forwardRef<
                     onChange={(text) => update(i.id, { text })}
                     onCommand={onCommand || (() => {})}
                     onUpload={onUpload}
+                    onVideo={(src, text) =>
+                      add({
+                        kind: "video",
+                        src,
+                        text,
+                        ...place(),
+                        width: 280,
+                        height: 210,
+                      })
+                    }
                     onObjectAction={(action) => {
                       if (action === "resize") {
                         setSelected([i.id]);
@@ -1232,6 +1411,21 @@ export default forwardRef<
           onPointerDown={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
+          {item?.kind === "video" && youtubeLink(item.src || "") && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                window.open(
+                  youtubeLink(item.src || "")!.url,
+                  "_blank",
+                  "noopener,noreferrer",
+                );
+                setMenu(undefined);
+              }}
+            >
+              Open video
+            </button>
+          )}
           {item?.kind === "drawing" && (
             <button
               role="menuitem"
@@ -1243,7 +1437,7 @@ export default forwardRef<
               Edit drawing
             </button>
           )}
-          {selected.length > 0 && (
+          {(selected.length > 0 || fullSelection.current) && (
             <>
               <button
                 role="menuitem"

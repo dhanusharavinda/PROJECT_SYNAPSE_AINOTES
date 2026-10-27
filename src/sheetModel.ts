@@ -155,7 +155,8 @@ export function eraseStrokes(
   return items.flatMap((item) => {
     if (!strokeCrosses(item, a, b, radius)) return [item];
     const input = item.points || [],
-      samples: Point[] = [];
+      samples: Point[] = [],
+      weights: number[] = [];
     for (let i = 0; i < input.length; i++) {
       const p = input[i],
         last = input[Math.max(0, i - 1)],
@@ -163,29 +164,44 @@ export function eraseStrokes(
           1,
           Math.ceil(Math.hypot(p[0] - last[0], p[1] - last[1]) / 2),
         );
-      for (let step = 1; step <= steps; step++)
+      for (let step = 1; step <= steps; step++) {
         samples.push([
           last[0] + ((p[0] - last[0]) * step) / steps,
           last[1] + ((p[1] - last[1]) * step) / steps,
         ]);
+        weights.push(
+          (item.pressures?.[Math.max(0, i - 1)] || 1) +
+            (((item.pressures?.[i] || 1) -
+              (item.pressures?.[Math.max(0, i - 1)] || 1)) *
+              step) /
+              steps,
+        );
+      }
     }
-    const groups: Point[][] = [];
-    let group: Point[] = [];
-    for (const p of samples) {
+    const groups: { points: Point[]; pressures: number[] }[] = [];
+    let group: Point[] = [],
+      pressureGroup: number[] = [];
+    for (const [index, p] of samples.entries()) {
       const hit =
         distance([p[0] + item.x, p[1] + item.y], a, b) <=
         radius + (item.strokeWidth || 2.4) / 2;
       if (hit) {
-        if (group.length) groups.push(group);
+        if (group.length)
+          groups.push({ points: group, pressures: pressureGroup });
         group = [];
-      } else group.push(p);
+        pressureGroup = [];
+      } else {
+        group.push(p);
+        pressureGroup.push(weights[index]);
+      }
     }
-    if (group.length) groups.push(group);
-    return groups.map((points, index) =>
+    if (group.length) groups.push({ points: group, pressures: pressureGroup });
+    return groups.map(({ points, pressures }, index) =>
       finishStroke({
         ...item,
         id: index ? crypto.randomUUID() : item.id,
         points,
+        pressures,
       }),
     );
   });

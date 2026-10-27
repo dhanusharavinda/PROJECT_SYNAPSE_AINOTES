@@ -21,6 +21,23 @@ afterEach(async () => {
 async function note(body = "My explanation", title = "Embeddings") {
   return (await owner("post", "/api/notes").send({ title, body })).body;
 }
+it("creates a narration script from visible note words without HTML or variant markers", async () => {
+  const n = await note(
+    variantsMarkdown([
+      {
+        label: "Simple",
+        body: '<p>A <span data-pastel="mint">clear idea</span> with an example.</p>',
+      },
+    ]),
+  );
+  const result = await owner("post", "/api/episodes")
+    .send({ noteIds: [n.id], ai: false })
+    .expect(201);
+  expect(result.body.script).toContain("A clear idea with an example.");
+  expect(result.body.script).not.toMatch(
+    /<[^>]+>|data-pastel|:::option|:::variants/,
+  );
+});
 it("persists a freeform Markdown page and variants across a fresh vault instance", async () => {
   const body =
     "A normal paragraph.\n\n" +
@@ -46,12 +63,15 @@ it("accepts a large new page without treating its body as a legacy layer", async
     .expect(200);
 });
 it("preserves the empty writing paragraph after an inline drawing across autosave", async () => {
-  const body = "Explain the flow.\n\n" + drawingMarkdown("drawing-placeholder") + "\n\n\n";
+  const body =
+    "Explain the flow.\n\n" + drawingMarkdown("drawing-placeholder") + "\n\n\n";
   const n = await note(body);
   expect(bodyOf(n)).toBe(body);
   const reopened = await new Vault(root).note(n.id);
   expect(reopened.body).toBe(body);
-  const saved = (await owner("put", "/api/notes/" + n.id).send({ ...reopened, body })).body;
+  const saved = (
+    await owner("put", "/api/notes/" + n.id).send({ ...reopened, body })
+  ).body;
   expect(bodyOf(saved)).toBe(body);
 });
 it("derives and removes inline graph links while preserving intentional typed relationships", async () => {

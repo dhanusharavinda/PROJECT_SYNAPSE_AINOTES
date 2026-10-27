@@ -5,6 +5,8 @@ declare global {
   interface Window {
     synapseEditing?: {
       native: (command: string) => void;
+      readClipboard?: () => Promise<string>;
+      writeClipboard?: (text: string) => Promise<void>;
       subscribe: (listener: (command: string) => void) => () => void;
     };
     synapseUpdates?: UpdateBridge;

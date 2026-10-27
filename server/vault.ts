@@ -60,6 +60,7 @@ export const noteSchema = z.object({
               "text",
               "table",
               "image",
+              "video",
               "drawing",
               "pen",
               "arrow",
@@ -86,6 +87,10 @@ export const noteSchema = z.object({
               .optional(),
             fitted: z.boolean().optional(),
             strokeWidth: z.number().finite().min(0.5).max(50).optional(),
+            pressures: z
+              .array(z.number().finite().min(0.7).max(1.3))
+              .max(15000)
+              .optional(),
           }),
         )
         .max(1500),

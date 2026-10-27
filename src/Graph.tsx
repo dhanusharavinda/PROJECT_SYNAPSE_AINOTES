@@ -104,10 +104,7 @@ function GraphView({
   refresh: () => Promise<void>;
   notify: (s: string) => void;
 }) {
-  const first =
-    data.notes.find((n) => n.title === "Embeddings")?.id ||
-    data.notes[0]?.id ||
-    "";
+  const first = data.notes[0]?.id || "";
   const [focus, setFocus] = useState(first),
     [selected, setSelected] = useState(first),
     [mode, setMode] = useState<"focus" | "roadmap">("focus");

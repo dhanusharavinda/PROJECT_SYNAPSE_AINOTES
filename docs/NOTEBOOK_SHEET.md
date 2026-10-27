@@ -2,6 +2,8 @@
 
 Synapse 1.2 adds a quieter notebook sheet, more reliable movement and keyboard editing, and an All notes page. Use the desktop update controls to install it.
 
+Version 1.2.1 removes repeated empty-text prompts. A newly created note briefly suggests `/link`, then the cue disappears. Fresh notebooks start empty with no subject-specific examples or default topic. Existing vault files remain intact. Local autosave is always on; the header shows saving progress or a save failure.
+
 ## Writing and drawing
 
 Write normally on existing text. Click blank space, including beside an existing line, to start writing exactly there. Enter moves to the next line. In Paper mode, new writing starts on the nearest ruled row. Choose **Pen** to draw directly on the sheet, **Eraser** to remove parts of pen strokes, or **Arrow** for a connector. The Shapes menu includes rectangle, ellipse, diamond, triangle, and line. **Table** places an editable table. No drawing window opens for these tools. A pen click makes a dot.
@@ -20,7 +22,15 @@ Use `/flowchart`, `/diagram`, the right-click menu, or **Generate flowchart**. R
 
 ## Appearance
 
-The sidebar has one theme button. Click it to cycle Light, Dark, and Paper. Paper aligns its rules to the selected writing font's measured baseline. Settings includes Book and Handwritten fonts. Handwritten uses the Windows Segoe Print font. Hiding navigation or connections gives the note the available width. Existing placed objects retain their coordinates, and wide pages can scroll horizontally when side panels are open.
+The note toolbar has a labelled theme control. Click it to cycle Light, Dark, and Paper. Paper aligns its rules to the selected writing font's measured baseline. The adjacent Book/Handwritten control changes the writing font while you work. Handwritten uses the Windows Segoe Print font. Hiding navigation or connections gives the note the available width. Existing placed objects retain their coordinates, and wide pages can scroll horizontally when side panels are open.
+
+Pen marks use a smoothed outline and a small speed-based change in thickness. The pointer remains responsive without an intentional trailing nib. Coalesced pointer samples and pressure ratios save with the note, including after erasing parts of a stroke.
+
+In Select mode, Copy and Delete appear in the toolbar. Right-clicking over writing or objects keeps the selection's commands. Text has Copy, Cut, and Paste in its own right-click menu. Desktop clipboard access is restricted to the notebook window.
+
+## YouTube links
+
+Paste a YouTube URL into writing or onto the sheet. Choose Link only, Named link, or Resizable thumbnail. Type an optional name directly into the focused field. Enter inserts a named link, and Escape keeps the original link. Timestamp and playlist parameters are preserved. Select a thumbnail card to drag it. Right-click for Open video or Resize. Thumbnails load from YouTube when online; the URL, label, and placement save locally.
 
 Optional explanation labels have an underline and no separate fill. Right-click menus keep scrolling inside the menu. File links open their original attachment; PDFs open in a separate document window inside the desktop app so local access stays valid.
 

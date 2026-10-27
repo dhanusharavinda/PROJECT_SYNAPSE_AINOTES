@@ -6,6 +6,8 @@ colors:
   paper-margin: "#d6a7a76b"
   selection-ink: "#173c2e"
   ink: "#24392f"
+  mint-ink: "#326953"
+  video-overlay: "#0006"
   muted: "#606e65"
   green: "#245344"
   pale: "#e9f0e8"
@@ -127,6 +129,12 @@ components:
 ---
 
 # Design System: Synapse
+
+## Notebook 1.2.1 interaction corrections
+
+Empty writing areas have no placeholder. One five-second cue introduces slash linking when a note is created. The existing toolbar names the current theme and font on desktop, and adds Copy/Delete only in Select mode. The theme control cycles three modes without a separate row of theme choices. Text clipboard actions and video actions remain contextual.
+
+Video paste uses one small focused choice panel. A thumbnail card stays compact, can be moved or resized, and opens from its context menu while editing. Its play icon uses a translucent neutral fill for legibility over varied imagery. Mint text was darkened within its existing pastel fill to restore readable contrast. Pen outlines are curved with restrained speed-based weight variation. None of these changes replaces the established palette or page frame.
 
 ## Notebook sheet update, 27 October 2026
 

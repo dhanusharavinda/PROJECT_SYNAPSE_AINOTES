@@ -1,4 +1,114 @@
 /* Stable page geometry and quiet, contextual controls. */
+.notebook-sheet .tiptap .is-empty::before {
+  content: none !important;
+}
+.clean-sheet .sheet-toolbar {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.clean-sheet .font-cycle {
+  gap: 5px;
+  white-space: nowrap;
+}
+.compact-nav .compact-theme {
+  margin-left: auto;
+  gap: 6px;
+  font-size: 12px;
+}
+.note-intro {
+  pointer-events: none;
+  animation: note-intro 5s ease forwards;
+  font-size: 12px;
+}
+@keyframes note-intro {
+  0%,
+  65% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-intro {
+    animation: none;
+  }
+}
+.writing-hint {
+  min-height: 32px;
+  justify-content: flex-end;
+}
+.writing-hint .note-intro {
+  margin-right: auto;
+}
+.video-paste-menu {
+  position: fixed;
+  z-index: 300;
+  display: grid;
+  gap: 5px;
+  width: min(295px, calc(100vw - 16px));
+  padding: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #12291c20;
+}
+.video-paste-menu strong {
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+.video-paste-menu input {
+  min-width: 0;
+  width: 100%;
+}
+.video-paste-menu button {
+  justify-content: flex-start;
+}
+.note-video {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.note-video .video-picture {
+  position: relative;
+  flex: 1;
+  min-height: 20px;
+  overflow: hidden;
+}
+.note-video img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.video-picture > svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  fill: #0006;
+}
+.note-video > span {
+  padding: 7px 9px;
+  font:
+    12px/1.4 Inter,
+    sans-serif;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.note-video:hover {
+  border-color: var(--green);
+}
 .sheet-clipboard {
   position: fixed;
   left: -10000px;

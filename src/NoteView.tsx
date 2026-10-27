@@ -62,6 +62,20 @@ export default function NoteView({
   const saving = useRef(false);
   const inFlight = useRef<Promise<Note> | null>(null);
   const [saveStatus, setSaveStatus] = useState("Saved locally");
+  const [intro, setIntro] = useState(false);
+  useEffect(() => {
+    const key = "synapse-new-note:" + note.id;
+    if (!sessionStorage.getItem(key)) {
+      setIntro(false);
+      return;
+    }
+    setIntro(true);
+    const timeout = setTimeout(() => {
+      setIntro(false);
+      sessionStorage.removeItem(key);
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [note.id]);
 
   const [connections, setConnections] = useState(
     () => localStorage.getItem("synapse-connections") !== "hidden",
@@ -488,7 +502,12 @@ export default function NoteView({
             </div>
           </details>
           <div className="writing-hint">
-            <span>Type / for more. Right-click to format.</span>
+            {intro && (
+              <span className="note-intro" role="status">
+                Type /link to connect a word to another page. Your notes save
+                automatically.
+              </span>
+            )}
             <button onClick={() => command("page")}>
               <Plus size={12} />
               Subpage
@@ -542,6 +561,7 @@ export default function NoteView({
               onChange={(body) => edit({ body })}
               onCommand={command}
               onUpload={upload}
+              onVideo={(url, label) => sheetRef.current?.video(url, label)}
               onPlace={(kind, src, alt) =>
                 kind === "image"
                   ? sheetRef.current?.image(src, alt || "Image")
