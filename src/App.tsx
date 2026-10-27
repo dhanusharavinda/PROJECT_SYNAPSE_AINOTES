@@ -31,6 +31,7 @@ import { Inbox, Review, Audio } from "./StudyViews";
 import Settings from "./Settings";
 import Shared from "./Shared";
 import BrandMark from "./BrandMark";
+import { nextTheme, type Theme } from "./themes";
 import DesktopUpdates from "./DesktopUpdates";
 import NotesLibrary from "./NotesLibrary";
 import { usePreferences, keyCombination } from "./preferences";
@@ -76,10 +77,12 @@ export default function App() {
   const [checked, setChecked] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark" | "paper">(() => {
+  const [theme, setTheme] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem("synapse-theme");
-      return saved === "dark" || saved === "paper" ? saved : "light";
+      return saved === "dark" || saved === "paper" || saved === "dotted"
+        ? saved
+        : "light";
     } catch {
       return "light";
     }
@@ -90,10 +93,7 @@ export default function App() {
     window.dispatchEvent(new Event("synapse:theme"));
   }, [theme]);
   useEffect(() => {
-    const cycle = () =>
-      setTheme((t) =>
-        t === "light" ? "dark" : t === "dark" ? "paper" : "light",
-      );
+    const cycle = () => setTheme((t) => nextTheme(t));
     window.addEventListener("synapse:cycle-theme", cycle);
     return () => window.removeEventListener("synapse:cycle-theme", cycle);
   }, []);
@@ -238,9 +238,7 @@ export default function App() {
         setTimeout(() => searchRef.current?.focus(), 30);
       } else if (action === "theme") {
         event.preventDefault();
-        setTheme((t) =>
-          t === "light" ? "dark" : t === "dark" ? "paper" : "light",
-        );
+        setTheme((t) => nextTheme(t));
       } else if (action === "save") {
         event.preventDefault();
         void saveCurrent.current?.().catch((error) => notify(error.message));
@@ -472,11 +470,7 @@ export default function App() {
             className="theme-cycle"
             aria-label={`Theme: ${theme}. Switch theme`}
             title="Light, Dark, Paper"
-            onClick={() =>
-              setTheme((t) =>
-                t === "light" ? "dark" : t === "dark" ? "paper" : "light",
-              )
-            }
+            onClick={() => setTheme((t) => nextTheme(t))}
           >
             {theme === "light" ? (
               <Sun size={16} />
@@ -526,15 +520,7 @@ export default function App() {
                 className="compact-theme"
                 aria-label={`Theme: ${theme}. Switch theme`}
                 title="Switch theme"
-                onClick={() =>
-                  setTheme(
-                    theme === "light"
-                      ? "dark"
-                      : theme === "dark"
-                        ? "paper"
-                        : "light",
-                  )
-                }
+                onClick={() => setTheme(nextTheme(theme))}
               >
                 {theme === "light" ? (
                   <Sun size={17} />

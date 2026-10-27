@@ -87,6 +87,12 @@ export const noteSchema = z.object({
               .optional(),
             fitted: z.boolean().optional(),
             strokeWidth: z.number().finite().min(0.5).max(50).optional(),
+            fill: z
+              .string()
+              .regex(/^(none|#[0-9a-fA-F]{6})$/)
+              .optional(),
+            opacity: z.number().min(0.1).max(1).optional(),
+            textScale: z.number().min(0.2).max(20).optional(),
             pressures: z
               .array(z.number().finite().min(0.7).max(1.3))
               .max(15000)
@@ -234,6 +240,44 @@ export class Vault {
     return JSON.parse(
       await fs.readFile(this.file(".synapse/state.json"), "utf8"),
     );
+  }
+  async clearContent() {
+    return this.serial(async () => {
+      const backup = ".synapse/resets/" + uid();
+      await fs.mkdir(this.file(backup), { recursive: true });
+      const moved: string[] = [];
+      try {
+        for (const entry of [
+          "notes",
+          "attachments",
+          "drawings",
+          "maps",
+          "audio",
+          "study",
+          ".synapse/history",
+          ".synapse/trash",
+          ".synapse/outbox",
+          ".synapse/state.json",
+        ]) {
+          const target = backup + "/" + entry.replaceAll("/", "_");
+          try {
+            await fs.rename(this.file(entry), this.file(target));
+            moved.push(entry);
+          } catch (e: any) {
+            if (e.code !== "ENOENT") throw e;
+          }
+        }
+        await this.init();
+        return backup;
+      } catch (error) {
+        for (const entry of moved.reverse())
+          await fs.rename(
+            this.file(backup + "/" + entry.replaceAll("/", "_")),
+            this.file(entry),
+          );
+        throw error;
+      }
+    });
   }
   async mutate<T>(fn: (s: State) => T | Promise<T>): Promise<T> {
     return this.serial(async () => {

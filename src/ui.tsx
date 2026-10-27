@@ -84,6 +84,7 @@ const safeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     span: [["dataPastel", "rose", "peach", "lemon", "mint", "sky", "lavender"]],
+    p: [["dataAlign", "left", "center", "right", "justify"]],
   },
 };
 function MarkdownText({ text, share }: { text: string; share?: string }) {

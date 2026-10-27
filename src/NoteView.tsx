@@ -87,6 +87,8 @@ export default function NoteView({
     );
   }, [connections]);
   const [modal, setModal] = useState("");
+  const [extractionSource, setExtractionSource] = useState<string>(),
+    [extracted, setExtracted] = useState("");
   const [target, setTarget] = useState("");
   const [relation, setRelation] = useState<Relation>("related");
   const [reason, setReason] = useState("");
@@ -253,7 +255,7 @@ export default function NoteView({
             sources: [...new Set([...latest.current.sources, source.id])],
           });
           if (source.kind === "image")
-            editorRef.current?.insertImage(
+            sheetRef.current?.image(
               "../attachments/" + source.file,
               source.title,
             );
@@ -278,6 +280,20 @@ export default function NoteView({
     await uploadTail.current;
   }
   async function command(cmd: string) {
+    if (cmd.startsWith("extract:")) {
+      const filename = cmd.slice(8).split("/").at(-1)?.split("?")[0];
+      const source = data.sources.find(
+        (s) => s.kind === "image" && s.file === filename,
+      );
+      if (!source) {
+        notify("Save the image in this note first, then try extraction again.");
+        return;
+      }
+      setExtractionSource(source.id);
+      setExtracted("");
+      setModal("extract");
+      return;
+    }
     if (cmd.startsWith("note:")) {
       const n = data.notes.find((n) => n.id === cmd.slice(5));
       if (n) action("navigate", async () => onOpen(n));
@@ -858,6 +874,77 @@ export default function NoteView({
           </div>
         </aside>
       )}
+      {modal === "extract" && extractionSource && (
+        <Modal title="Extract image" wide onClose={() => setModal("")}>
+          <p>
+            AI can read text, describe diagrams, and identify colours. Review
+            uncertain handwriting and formulas. The original image stays in your
+            note.
+          </p>
+          <p className="small muted">
+            Visual extraction uses your configured provider: a local Ollama
+            vision model, or OpenAI if selected. Local OCR reads text only.
+          </p>
+          <button
+            disabled={!!pending}
+            onClick={() =>
+              void action("extract", async () => {
+                const r = await api<any>(
+                  "/sources/" + extractionSource + "/extract",
+                  { mode: "vision", consent: true },
+                );
+                setExtracted(r.text);
+              })
+            }
+          >
+            Extract using AI
+          </button>
+          <button
+            disabled={!!pending}
+            onClick={() =>
+              void action("extract", async () => {
+                const r = await api<any>(
+                  "/sources/" + extractionSource + "/extract",
+                  { mode: "ocr" },
+                );
+                setExtracted(r.text);
+              })
+            }
+          >
+            Local text OCR
+          </button>
+          {extracted && (
+            <>
+              <textarea
+                aria-label="Extracted image draft"
+                className="extracted-draft"
+                value={extracted}
+                onChange={(e) => setExtracted(e.target.value)}
+              />
+              <button
+                onClick={() => {
+                  edit({
+                    body: (latest.current.body || "") + "\n\n" + extracted,
+                  });
+                  setModal("");
+                }}
+              >
+                Insert approved text
+              </button>
+              <button
+                disabled={!!pending}
+                onClick={() => {
+                  setDiagramSelection(extracted);
+                  setDiagramNotes([]);
+                  setModal("diagram");
+                }}
+              >
+                Rebuild diagram from draft
+              </button>
+            </>
+          )}
+        </Modal>
+      )}
       {modal === "conflict" && conflict && (
         <Modal
           title="Two versions need your attention"
@@ -1345,7 +1432,25 @@ export default function NoteView({
                 <summary>Check the relationships</summary>
                 <div className="diagram-draft">
                   {proposal.diagram.nodes.map((n) => (
-                    <span key={n.id}>{n.label}</span>
+                    <input
+                      key={n.id}
+                      aria-label={"Diagram label " + n.id}
+                      maxLength={65}
+                      value={n.label}
+                      onChange={(e) =>
+                        setProposal({
+                          ...proposal,
+                          diagram: {
+                            ...proposal.diagram!,
+                            nodes: proposal.diagram!.nodes.map((x) =>
+                              x.id === n.id
+                                ? { ...x, label: e.target.value }
+                                : x,
+                            ),
+                          },
+                        })
+                      }
+                    />
                   ))}
                   {proposal.diagram.edges.map((e, i) => (
                     <p key={i}>
@@ -1358,7 +1463,64 @@ export default function NoteView({
                         proposal.diagram!.nodes.find((n) => n.id === e.to)
                           ?.label
                       }{" "}
-                      <small>{e.label}</small>
+                      <select
+                        aria-label={"Connection source " + i}
+                        value={e.from}
+                        onChange={(ev) =>
+                          setProposal({
+                            ...proposal,
+                            diagram: {
+                              ...proposal.diagram!,
+                              edges: proposal.diagram!.edges.map((x, j) =>
+                                j === i ? { ...x, from: ev.target.value } : x,
+                              ),
+                            },
+                          })
+                        }
+                      >
+                        {proposal.diagram!.nodes.map((n) => (
+                          <option key={n.id} value={n.id}>
+                            {n.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label={"Connection target " + i}
+                        value={e.to}
+                        onChange={(ev) =>
+                          setProposal({
+                            ...proposal,
+                            diagram: {
+                              ...proposal.diagram!,
+                              edges: proposal.diagram!.edges.map((x, j) =>
+                                j === i ? { ...x, to: ev.target.value } : x,
+                              ),
+                            },
+                          })
+                        }
+                      >
+                        {proposal.diagram!.nodes.map((n) => (
+                          <option key={n.id} value={n.id}>
+                            {n.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label={"Connection label " + i}
+                        maxLength={40}
+                        value={e.label}
+                        onChange={(ev) =>
+                          setProposal({
+                            ...proposal,
+                            diagram: {
+                              ...proposal.diagram!,
+                              edges: proposal.diagram!.edges.map((x, j) =>
+                                j === i ? { ...x, label: ev.target.value } : x,
+                              ),
+                            },
+                          })
+                        }
+                      />
                     </p>
                   ))}
                 </div>
@@ -1390,6 +1552,7 @@ export default function NoteView({
                   const result = await api("/proposals/" + proposal.id, {
                     action: "accept",
                     allowStaleDiagram: proposal.kind === "diagram",
+                    ...(proposal.diagram ? { diagram: proposal.diagram } : {}),
                   });
                   if (result.note)
                     adopt(
@@ -1399,7 +1562,7 @@ export default function NoteView({
                         : undefined,
                     );
                   if (proposal.kind === "diagram" && result.drawingId) {
-                    editorRef.current?.insertDrawing(result.drawingId);
+                    sheetRef.current?.drawing(result.drawingId);
                     await save();
                     notify(
                       "Flowchart inserted into your note. Double-click it to customize.",

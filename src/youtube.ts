@@ -3,6 +3,19 @@ export function youtubeLink(input: string) {
     const url = new URL(input.trim());
     if (!["https:", "http:"].includes(url.protocol)) return;
     const host = url.hostname.toLowerCase();
+    if (url.username || url.password) return;
+    if (["instagram.com", "www.instagram.com"].includes(host)) {
+      const code = url.pathname.match(
+        /^\/(?:p|reel|reels|tv)\/([\w-]+)\/?$/,
+      )?.[1];
+      if (code)
+        return {
+          id: code,
+          url: url.href,
+          thumbnail: "",
+          platform: "Instagram",
+        };
+    }
     let id = "";
     if (host === "youtu.be") id = url.pathname.slice(1).split("/")[0];
     else if (

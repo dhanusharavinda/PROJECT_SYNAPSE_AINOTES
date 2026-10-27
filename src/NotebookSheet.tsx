@@ -47,6 +47,7 @@ import {
   finishStroke,
   migrateScene,
   resizeItem,
+  resizeGroup,
   sameScene,
   shapeKinds,
   eraseStrokes,
@@ -137,6 +138,8 @@ export default forwardRef<
     gesture = useRef<Gesture | undefined>(undefined),
     history = useRef<NoteCanvas[]>([]),
     future = useRef<NoteCanvas[]>([]);
+  const [fill, setFill] = useState(false),
+    [highlighter, setHighlighter] = useState(false);
   const pasteTarget = useRef<HTMLTextAreaElement>(null);
   const [pendingVideo, setPendingVideo] = useState<{
     url: string;
@@ -715,7 +718,7 @@ export default forwardRef<
       if (
         tool === "write" &&
         (e.target as HTMLElement).closest(
-          ".sheet-object,.variant-controls,.variant-label-row,.code-toolbar,.inline-drawing,.notebook-image,pre,table,a",
+          ".sheet-object:not(.kind-text),.variant-controls,.variant-label-row,.code-toolbar,.inline-drawing,.notebook-image,pre,table,a",
         )
       )
         return;
@@ -791,6 +794,8 @@ export default forwardRef<
           height: 1,
           color,
           strokeWidth: size,
+          fill: fill ? color : "none",
+          opacity: highlighter && tool === "pen" ? 0.32 : 1,
           points: [[0, 0]],
           pressures: [1],
         },
@@ -840,9 +845,12 @@ export default forwardRef<
     let items = latest.current.items;
     if (g.type === "move") items = translate(origin.items, g.ids, dx, dy);
     else if (g.type === "resize")
-      items = origin.items.map((i) =>
-        g.ids.includes(i.id) ? resizeItem(i, dx, dy) : i,
-      );
+      items =
+        g.ids.length > 1
+          ? resizeGroup(origin.items, g.ids, dx, dy)
+          : origin.items.map((i) =>
+              g.ids.includes(i.id) ? resizeItem(i, dx, dy) : i,
+            );
     else
       items = items.map((i) => {
         if (i.id !== g.ids[0]) return i;
@@ -951,8 +959,8 @@ export default forwardRef<
       ["write", "Write", Type],
       ["select", "Select", MousePointer2],
       ["pen", "Pen", PenLine],
-      ["eraser", "Eraser", Eraser],
       ["arrow", "Arrow", ArrowUpRight],
+      ["eraser", "Eraser", Eraser],
     ] as const,
     shapeTools = [
       ["rectangle", "Rectangle", Square],
@@ -970,6 +978,7 @@ export default forwardRef<
         <VideoPasteMenu
           x={pendingVideo.x}
           y={pendingVideo.y}
+          url={pendingVideo.url}
           onChoose={(mode, label) => {
             const url = youtubeLink(pendingVideo.url)!.url;
             const title = label.trim() || "YouTube video";
@@ -1023,11 +1032,66 @@ export default forwardRef<
               aria-label={label + " tool"}
               title={label}
               aria-pressed={tool === id}
-              onClick={() => choose(id)}
+              onClick={() => {
+                if (id === "pen") setHighlighter(false);
+                choose(id);
+              }}
             >
               <Icon size={17} />
             </button>
           ))}
+          <button
+            aria-label="Delete selected objects"
+            title="Delete selection"
+            disabled={!selected.length && !fullSelection.current}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => remove()}
+          >
+            <Trash2 size={17} />
+          </button>
+          <button
+            aria-label="Pink highlighter"
+            title="Pink highlighter"
+            onClick={() => {
+              choose("pen");
+              setHighlighter(true);
+              setColor("#ff1493");
+              setSize(18);
+            }}
+          >
+            <PenLine size={17} color="#d4006a" />
+          </button>
+          <button
+            aria-label="Green highlighter"
+            title="Green highlighter"
+            onClick={() => {
+              choose("pen");
+              setHighlighter(true);
+              setColor("#39ff14");
+              setSize(18);
+            }}
+          >
+            <PenLine size={17} color="#167d19" />
+          </button>
+          <button
+            aria-label="Fill shapes"
+            title="Fill shapes with pen colour"
+            aria-pressed={fill}
+            onClick={() => {
+              setFill(!fill);
+              if (selected.length)
+                commit({
+                  ...latest.current,
+                  items: latest.current.items.map((i) =>
+                    selected.includes(i.id)
+                      ? { ...i, fill: fill ? "none" : color }
+                      : i,
+                  ),
+                });
+            }}
+          >
+            <Square size={17} fill={fill ? color : "none"} />
+          </button>
           <div className="shape-picker">
             <button
               aria-label="Shapes"
@@ -1074,7 +1138,7 @@ export default forwardRef<
         <div className="sheet-tool-group">
           <button
             aria-label={`Theme: ${theme}. Switch theme`}
-            title="Switch theme: Light, Dark, Paper"
+            title="Switch theme: Light, Dark, Paper, Dotted"
             onClick={() =>
               window.dispatchEvent(new Event("synapse:cycle-theme"))
             }
@@ -1145,7 +1209,7 @@ export default forwardRef<
             title="Pen size"
             type="range"
             min="1"
-            max="12"
+            max="24"
             step="0.5"
             value={size}
             onChange={(e) => setSize(Number(e.target.value))}
@@ -1266,6 +1330,7 @@ export default forwardRef<
                     "--object-height":
                       (scene.width ? i.height : (i.height * viewWidth) / 1000) +
                       "px",
+                    "--text-scale": i.textScale || 1,
                     left: scene.width ? i.x : i.x / 10 + "%",
                     top: scene.width ? i.y : (i.y * viewWidth) / 1000,
                     width: scene.width ? i.width : i.width / 10 + "%",
@@ -1370,16 +1435,30 @@ export default forwardRef<
                     }}
                   />
                 )}
-                {resizing && selected.includes(i.id) && !activeGesture && (
-                  <button
-                    className="object-resize"
-                    aria-label="Resize object"
-                    onPointerDown={(e) => begin(e, "resize", [i.id])}
-                  />
-                )}
+                {selected.includes(i.id) &&
+                  !activeGesture &&
+                  selected.length === 1 && (
+                    <button
+                      className="object-resize"
+                      aria-label="Resize object"
+                      onPointerDown={(e) => begin(e, "resize", selected)}
+                    />
+                  )}
               </div>
             );
           })}
+          {selectedItems.length > 1 && !activeGesture && (
+            <button
+              className="object-resize group-resize"
+              aria-label="Resize group"
+              style={{
+                left: Math.max(...selectedItems.map((i) => i.x + i.width)) - 6,
+                top: Math.max(...selectedItems.map((i) => i.y + i.height)) - 6,
+                zIndex: 200,
+              }}
+              onPointerDown={(e) => begin(e, "resize", selected)}
+            />
+          )}
           {marquee && (
             <div
               className="selection-marquee"
@@ -1411,6 +1490,17 @@ export default forwardRef<
           onPointerDown={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
+          {item?.kind === "image" && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                onCommand?.("extract:" + item.src);
+                setMenu(undefined);
+              }}
+            >
+              Extract using AI
+            </button>
+          )}
           {item?.kind === "video" && youtubeLink(item.src || "") && (
             <button
               role="menuitem"

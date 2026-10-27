@@ -44,7 +44,7 @@ export function isPrivate(address: string) {
 export async function publicPage(
   raw: string,
   redirects = 0,
-): Promise<{ title: string; text: string; coverage: string }> {
+): Promise<{ title: string; text: string; coverage: string; image?: string }> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -147,9 +147,16 @@ export async function publicPage(
       coverage: "Public text retrieved. Linked pages were not fetched.",
     };
   const dom = new JSDOM(res.body, { url: url.href });
+  const image =
+    dom.window.document
+      .querySelector('meta[property="og:image"]')
+      ?.getAttribute("content") || undefined;
   const article = new Readability(dom.window.document).parse();
   const text = article?.textContent?.trim() ?? "";
-  if (text.length < 80)
+  if (
+    text.length < 80 &&
+    !(image && /(^|\.)instagram\.com$/.test(url.hostname))
+  )
     throw new AppError(
       422,
       "Not enough readable text. This page may require a login or client-side rendering. Paste text or upload a file.",
@@ -157,6 +164,7 @@ export async function publicPage(
   return {
     title: article?.title || url.hostname,
     text: text.slice(0, 100000),
+    image,
     coverage:
       "Public page text only. Embedded video, linked pages, and images were not analyzed.",
   };
@@ -188,10 +196,19 @@ export async function extractPdf(buffer: Buffer) {
 }
 export async function ocr(file: string) {
   const { createWorker } = await import("tesseract.js");
-  const base = path.dirname(
-    fileURLToPath(import.meta.resolve("@tesseract.js-data/eng/package.json")),
-  ).replace("app.asar", "app.asar.unpacked");
-  const workerPath = path.join(path.dirname(fileURLToPath(import.meta.resolve("tesseract.js"))), "worker-script", "node", "index.js").replace("app.asar", "app.asar.unpacked");
+  const base = path
+    .dirname(
+      fileURLToPath(import.meta.resolve("@tesseract.js-data/eng/package.json")),
+    )
+    .replace("app.asar", "app.asar.unpacked");
+  const workerPath = path
+    .join(
+      path.dirname(fileURLToPath(import.meta.resolve("tesseract.js"))),
+      "worker-script",
+      "node",
+      "index.js",
+    )
+    .replace("app.asar", "app.asar.unpacked");
   const worker = await createWorker("eng", 1, {
     workerPath,
     langPath: path.join(base, "4.0.0"),

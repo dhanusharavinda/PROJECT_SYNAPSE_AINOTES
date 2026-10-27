@@ -59,6 +59,17 @@ export function resizeItem(
     ...item,
     width,
     height,
+    textScale:
+      item.kind === "text"
+        ? Math.max(
+            0.2,
+            Math.min(
+              20,
+              (item.textScale || 1) *
+                Math.max(width / item.width, height / item.height),
+            ),
+          )
+        : item.textScale,
     points: item.points?.map(([x, y]) => [
       (x * width) / item.width,
       (y * height) / item.height,
@@ -80,6 +91,32 @@ export function finishStroke(item: CanvasItem): CanvasItem {
     height: Math.max(1, maxY - minY) + pad * 2,
     points: points.map(([x, y]) => [x - minX + pad, y - minY + pad]),
   };
+}
+export function resizeGroup(
+  items: CanvasItem[],
+  ids: string[],
+  dx: number,
+  dy: number,
+) {
+  const picked = items.filter((i) => ids.includes(i.id));
+  if (!picked.length) return items;
+  const x = Math.min(...picked.map((i) => i.x)),
+    y = Math.min(...picked.map((i) => i.y));
+  const w = Math.max(...picked.map((i) => i.x + i.width)) - x,
+    h = Math.max(...picked.map((i) => i.y + i.height)) - y;
+  const rx = dx / Math.max(1, w),
+    ry = dy / Math.max(1, h);
+  const sx = Math.max(0.1, 1 + (Math.abs(rx) >= Math.abs(ry) ? rx : ry)),
+    sy = sx;
+  return items.map((i) =>
+    ids.includes(i.id)
+      ? {
+          ...resizeItem(i, i.width * (sx - 1), i.height * (sy - 1)),
+          x: x + (i.x - x) * sx,
+          y: y + (i.y - y) * sy,
+        }
+      : i,
+  );
 }
 function distance(p: Point, a: Point, b: Point) {
   const dx = b[0] - a[0],

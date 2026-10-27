@@ -27,6 +27,9 @@ export interface CanvasItem {
   fitted?: boolean;
   strokeWidth?: number;
   pressures?: number[];
+  fill?: string;
+  opacity?: number;
+  textScale?: number;
 }
 export interface NoteCanvas {
   items: CanvasItem[];

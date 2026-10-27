@@ -130,6 +130,10 @@ components:
 
 # Design System: Synapse
 
+## Dotted sheet, version 1.3
+
+Dotted extends the existing theme control rather than adding another switch. The writing surface uses white with muted gray-green dots every 16 pixels. Pink/green marker tools use saved translucent ink; default font colours have transparent backgrounds. A selection's resize corner is visible without opening a menu, and the trash icon sits beside Eraser. The existing toolbar wraps at narrow widths. AI teacher and destructive reset stay behind disclosures and confirmation so ordinary writing remains the main task.
+
 ## Notebook 1.2.1 interaction corrections
 
 Empty writing areas have no placeholder. One five-second cue introduces slash linking when a note is created. The existing toolbar names the current theme and font on desktop, and adds Copy/Delete only in Select mode. The theme control cycles three modes without a separate row of theme choices. Text clipboard actions and video actions remain contextual.

@@ -1,5 +1,17 @@
 # Build review
 
+## Dotted notebook and study tools, version 1.3.0
+
+Added a fourth theme with a 16-pixel dot grid, proportional group scaling, placed-text/emoji scaling, default drag/resize handles, and a selection-delete icon beside Eraser. Shape fill and fluorescent marker strokes persist in Markdown metadata. Saved pen colour is no longer inverted by dark theme CSS. Text colour backgrounds were removed. Paragraph alignment round-trips through Markdown using a sanitized attribute, and edited ordered lists normalize numbering. Slash ordering puts page links and page creation first.
+
+Images now have a contextual extraction workflow with explicit analysis choice and editable approval draft. Visual analysis supports an installed local Ollama vision model with cloud-model rejection, or OpenAI when selected. Disabled AI cannot silently send images to a saved cloud key. OCR remains text only. A draft can feed diagram generation, whose labels and connection endpoints are editable before acceptance. Schema validation rejects invalid references and disconnected diagrams. These checks do not prove semantic correctness; user review remains necessary.
+
+AI teacher uses only explicitly selected notes and separates the question, hint, and reference explanation. Instagram preview cards use validated public post/reel URLs; server retrieval retains pinned-public-DNS guards, and only HTTPS Instagram/Facebook CDN image URLs are returned. Blocked/private posts fall back without login or cookie collection. Clear-data is local-app-only, requires exact typed confirmation, serializes against writes, and moves notebook content to a recovery directory while preserving settings.
+
+130 tests, strict TypeScript, production and NSIS builds passed. Tests cover reset confirmation/recovery/settings retention, selected-note scoping, disabled-provider protection, group scaling, Instagram host validation, connected diagrams, alignment persistence, and list renumbering. Browser checks cover Dotted, group/emoji scaling, marker opacity, original ink across themes, default resize, slash order, saving, and zero console errors. Packaged checks cover clipboard, code paste/copy, full selection delete/undo, autosave, and fresh notebooks. Live local Ollama tests returned a transcription/diagram description from a synthetic screenshot, a grounded recall question, and a valid three-node/two-edge flowchart. No cloud inference or user-vault reset was performed.
+
+Production responsive inspection reports zero failures and two advisories for compact controls and ink SVGs classified as charts. All six captures and the separate Dotted capture were opened. Mobile remains the stacked companion layout. Image colours/structure are estimates; Instagram previews depend on public availability; physical OS menu accelerators are covered by routing unit tests rather than CDP. Release receipts are in the handoff.
+
 ## Writing and clipboard fixes, version 1.2.1
 
 Removed the repeated empty-editor placeholder and all bundled subject-specific starter data and defaults. A fresh notebook is empty. Existing user files remain intact. A new note has one short slash-link cue that fades and unmounts after five seconds, including under React Strict Mode. Theme and Book/Handwritten controls are in the sheet toolbar. Selected objects expose Copy and Delete; selection context capture takes precedence over the text menu in Select mode.

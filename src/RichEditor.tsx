@@ -45,6 +45,7 @@ import { copyText, readClipboard } from "./clipboard";
 import { repairNotebookMarkup } from "./content";
 import { youtubeLink } from "./youtube";
 import VideoPasteMenu from "./VideoPasteMenu";
+import { AlignedParagraph, RenumberLists } from "./writingExtensions";
 const editorDisplay = (text: string) =>
   displayMarkdown(repairNotebookMarkup(text)).replace(
     /\/files\/attachments\/[^\s)]+/g,
@@ -97,6 +98,10 @@ const NotebookImage = Image.extend({
   },
 });
 const commandInfo = [
+  ["align-left", "Align left", Type],
+  ["align-center", "Align centre", Type],
+  ["align-right", "Align right", Type],
+  ["align-justify", "Justify text", Type],
   ["undo", "Undo", Undo2],
   ["redo", "Redo", Redo2],
   ["text", "Normal text", Type],
@@ -197,13 +202,33 @@ const Editor = forwardRef<
   const activeRef = useRef(active);
   activeRef.current = active;
   const doRef = useRef<(cmd: string) => void>(() => {});
-  const filtered = commandInfo.filter(
-    ([key, label]) =>
-      (key !== "float" || !!onPlace) &&
-      (!slash ||
-        key.includes(slash.query.toLowerCase()) ||
-        label.toLowerCase().includes(slash.query.toLowerCase())),
-  );
+  const filtered = [...commandInfo]
+    .sort((a, b) => {
+      const order = [
+        "link",
+        "page",
+        "text",
+        "todo",
+        "image",
+        "table",
+        "flowchart",
+        "code",
+        "numbered",
+        "bullet",
+        "variant",
+      ];
+      return (
+        (order.includes(a[0]) ? order.indexOf(a[0]) : 99) -
+        (order.includes(b[0]) ? order.indexOf(b[0]) : 99)
+      );
+    })
+    .filter(
+      ([key, label]) =>
+        (key !== "float" || !!onPlace) &&
+        (!slash ||
+          key.includes(slash.query.toLowerCase()) ||
+          label.toLowerCase().includes(slash.query.toLowerCase())),
+    );
   const filteredRef = useRef(filtered);
   filteredRef.current = filtered;
   function offerVideo(text: string, view: CoreEditor["view"]) {
@@ -223,7 +248,13 @@ const Editor = forwardRef<
   }
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false, link: { openOnClick: false } }),
+      StarterKit.configure({
+        paragraph: false,
+        codeBlock: false,
+        link: { openOnClick: false },
+      }),
+      AlignedParagraph,
+      RenumberLists,
       CodeWithCopy,
       Markdown,
       TableKit.configure({
@@ -494,6 +525,10 @@ const Editor = forwardRef<
     if (editor.state.selection.$from.parent.type.name === "codeBlock") {
       editor.view.dispatch(editor.state.tr.insertText(text));
     } else if (!offerVideo(text, editor.view)) {
+      if (/^\s*\d+[.)]\s+/m.test(text)) {
+        editor.commands.insertContent(text, { contentType: "markdown" });
+        return;
+      }
       editor.commands.insertContent(
         text.includes("\n")
           ? text.split(/\r?\n/).map((line) => ({
@@ -605,7 +640,9 @@ const Editor = forwardRef<
     } else restore();
     capture();
     const c = editor.chain().focus();
-    if (cmd === "undo") c.undo().run();
+    if (cmd.startsWith("align-"))
+      c.updateAttributes("paragraph", { textAlign: cmd.slice(6) }).run();
+    else if (cmd === "undo") c.undo().run();
     else if (cmd === "redo") c.redo().run();
     else if (cmd === "bold") c.toggleBold().run();
     else if (cmd === "italic") c.toggleItalic().run();
@@ -1045,6 +1082,7 @@ const Editor = forwardRef<
         <VideoPasteMenu
           x={videoPaste.x}
           y={videoPaste.y}
+          url={videoPaste.url}
           onChoose={finishVideo}
           allowThumbnail={!!onVideo}
         />
@@ -1065,6 +1103,20 @@ const Editor = forwardRef<
           >
             {mediaTarget && (
               <div className="context-media-actions">
+                {mediaTarget.classList.contains("notebook-image") && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      const src = mediaTarget
+                        .querySelector("img")
+                        ?.getAttribute("src");
+                      if (src) commandCallback.current("extract:" + src);
+                      setContext(undefined);
+                    }}
+                  >
+                    Extract using AI
+                  </button>
+                )}
                 {[
                   ...mediaTarget.querySelectorAll<HTMLButtonElement>(
                     ".drawing-tools button,.media-controls button",
@@ -1286,6 +1338,10 @@ const Editor = forwardRef<
               .filter(([key]) =>
                 [
                   "variant",
+                  "align-left",
+                  "align-center",
+                  "align-right",
+                  "align-justify",
                   "link",
                   "page",
                   "code",

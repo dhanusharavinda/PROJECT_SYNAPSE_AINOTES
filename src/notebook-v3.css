@@ -1,4 +1,122 @@
 /* Stable page geometry and quiet, contextual controls. */
+.sheet-object.kind-text .note-editor p {
+  line-height: calc(32px * var(--text-scale, 1)) !important;
+  min-height: calc(32px * var(--text-scale, 1));
+}
+[data-align="center"] {
+  text-align: center;
+}
+[data-align="right"] {
+  text-align: right;
+}
+[data-align="justify"] {
+  text-align: justify;
+}
+.notebook-sheet .ProseMirror-selectednode .media-resize {
+  display: block !important;
+}
+.notebook-sheet .ProseMirror-selectednode .drawing-resizer {
+  resize: both !important;
+}
+.clean-sheet .is-gesturing .object-resize {
+  display: none !important;
+}
+.tool-write .sheet-object.kind-pen:has(.sheet-shape[style*="0.32"]) {
+  pointer-events: none;
+}
+.extracted-draft {
+  display: block;
+  width: 100%;
+  min-height: 300px;
+  margin: 16px 0;
+  font:
+    14px/1.6 Inter,
+    sans-serif;
+}
+.ai-teacher {
+  padding: 18px 0;
+  margin-bottom: 24px;
+  border-block: 1px solid var(--line);
+}
+.ai-teacher summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.teacher-notes {
+  max-height: 200px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.teacher-notes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.teacher-notes input {
+  width: auto;
+}
+.ai-teacher textarea {
+  width: 100%;
+  min-height: 140px;
+  margin: 12px 0;
+}
+.ai-teacher button {
+  margin: 4px;
+}
+.preview-unavailable {
+  display: block;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+[data-theme="dotted"] {
+  --canvas: #fafbf8;
+  --surface: #fff;
+  --ink: #24392f;
+  --muted: #606e65;
+  --line: #e5e9e1;
+}
+.sheet-object.kind-text .note-editor {
+  font-size: calc(16px * var(--text-scale, 1)) !important;
+}
+.group-resize {
+  position: absolute;
+  right: auto;
+  bottom: auto;
+}
+.sheet-shape[style*="0.32"] {
+  mix-blend-mode: multiply;
+}
+[data-theme] [data-pastel] {
+  background: transparent !important;
+}
+[data-theme="dotted"] .notebook-sheet-content {
+  background-color: #fff;
+  background-image: radial-gradient(circle, #a2ada7 0.8px, transparent 0.9px);
+  background-size: 16px 16px;
+}
+.sheet-object.kind-text .note-editor {
+  font-size: calc(16px * var(--text-scale, 1));
+}
+.sheet-object .object-resize {
+  display: block !important;
+}
+[data-theme] .sheet-shape {
+  filter: none !important;
+}
+.note-editor [data-pastel] {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.note-editor ol {
+  list-style-type: decimal;
+}
+.context-clipboard {
+  display: flex;
+  gap: 4px;
+}
 .notebook-sheet .tiptap .is-empty::before {
   content: none !important;
 }

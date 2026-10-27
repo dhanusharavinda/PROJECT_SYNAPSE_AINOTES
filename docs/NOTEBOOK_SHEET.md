@@ -1,5 +1,21 @@
 # Write, draw, and arrange on one page
 
+## New in 1.3
+
+The theme control now cycles Light, Dark, Paper, and **Dotted**. Dotted adds a 16-pixel visual grid without forcing pointer snapping. The grid is a drawing aid; writing remains free to place.
+
+Select an object to see its grip and corner resize handle. Drag a selection box around multiple objects, then use the group corner to resize them proportionally. Placed text, including emojis, scales with the group. The bin icon next to Eraser deletes the selection, and Undo restores it. Use the Text tool to place writing over another object. Blank areas inside existing text boxes also accept new writing.
+
+**Fill shapes** applies the current pen colour to closed shapes. Pink and Green highlighter buttons create translucent fluorescent ink over writing. Theme switching preserves saved drawing colours. Text colour choices affect the letters; they do not add a background. Right-click text or use `/align-left`, `/align-center`, `/align-right`, or `/align-justify` for paragraph alignment. Numbered lists renumber after edits.
+
+Right-click an image and choose **Extract using AI**. Choose visual extraction with a configured local Ollama vision model or OpenAI, or local text-only OCR. Review the editable extraction draft before inserting. The image remains intact. **Rebuild diagram from draft** opens the diagram proposal workflow; you can correct labels and connection endpoints before accepting. Handwriting, diagrams, and colour estimates can be wrong, and this is not a pixel-perfect conversion.
+
+**Review > AI teacher** lets you choose up to ten notes, request a question, try an answer, ask for a hint, and discuss your answer. Reveal the reference explanation when ready. It uses your configured provider and does not automatically mark notes as learned.
+
+Instagram post and reel links offer the same paste choices as YouTube. A public thumbnail may load into a resizable card. Instagram can block retrieval; the card then retains a usable original link. No login cookies or credentials are requested.
+
+**Settings > Clear notebook data** requires typing `CLEAR MY NOTEBOOK`. It clears notes, attachments, drawings, reviews, shares, and audio from the active notebook, while keeping provider settings. A recovery copy remains in `.synapse/resets/<id>` inside your vault. This is a recoverable reset, not secure permanent erasure.
+
 Synapse 1.2 adds a quieter notebook sheet, more reliable movement and keyboard editing, and an All notes page. Use the desktop update controls to install it.
 
 Version 1.2.1 removes repeated empty-text prompts. A newly created note briefly suggests `/link`, then the cue disappears. Fresh notebooks start empty with no subject-specific examples or default topic. Existing vault files remain intact. Local autosave is always on; the header shows saving progress or a save failure.

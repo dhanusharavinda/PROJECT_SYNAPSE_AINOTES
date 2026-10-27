@@ -5,13 +5,17 @@ export default function VideoPasteMenu({
   y,
   onChoose,
   allowThumbnail = true,
+  url,
 }: {
   x: number;
   y: number;
   onChoose: (mode: "link" | "named" | "thumbnail", label: string) => void;
   allowThumbnail?: boolean;
+  url?: string;
 }) {
-  const [label, setLabel] = useState("YouTube video");
+  const [label, setLabel] = useState(
+    url?.includes("instagram.com") ? "Instagram post" : "YouTube video",
+  );
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const focus = () => {
@@ -57,7 +61,7 @@ export default function VideoPasteMenu({
         }
       }}
     >
-      <strong>Paste video as</strong>
+      <strong>Paste video or post as</strong>
       <input
         ref={input}
         autoFocus

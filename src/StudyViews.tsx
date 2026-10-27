@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { bodyOf, plainNote } from "./content";
 import { readableText } from "./studyText";
+import AITeacher from "./AITeacher";
 import type { Bootstrap, Note, Source, Episode } from "./types";
 import { api, fileUrl } from "./api";
 import { Modal, MD, Busy, Empty } from "./ui";
@@ -550,6 +551,7 @@ export function Review({
         </div>
         <span className="pill">{due.length} concepts ready for review</span>
       </header>
+      <AITeacher notes={data.notes} />
       <div className="review-layout">
         <aside className="review-queue">
           <span className="section-label">Your concepts</span>

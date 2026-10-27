@@ -8,7 +8,7 @@ import {
   Layers,
 } from "lucide-react";
 import { api, hosted } from "./api";
-import { Busy } from "./ui";
+import { Busy, Modal } from "./ui";
 import type { Bootstrap, Note } from "./types";
 import {
   usePreferences,
@@ -33,6 +33,8 @@ export default function Settings({
     telegramChat: "",
   });
   const [busy, setBusy] = useState(false);
+  const [clearing, setClearing] = useState(false),
+    [clearText, setClearText] = useState("");
   const [archived, setArchived] = useState<Note[]>([]);
   const [trashed, setTrashed] = useState<Note[]>([]);
   const preferences = usePreferences();
@@ -441,6 +443,9 @@ export default function Settings({
         </section>
       </div>
       <footer className="settings-save">
+        {!hosted && (
+          <button onClick={() => setClearing(true)}>Clear notebook data</button>
+        )}
         <button className="primary" disabled={busy} onClick={save}>
           {busy ? <Busy /> : <Check size={15} />}Save settings
         </button>
@@ -448,6 +453,46 @@ export default function Settings({
           External requests never start just because you opened a note.
         </span>
       </footer>
+      {clearing && (
+        <Modal title="Clear notebook data" onClose={() => setClearing(false)}>
+          <p>
+            This clears notes, files, drawings, reviews, sharing links and audio
+            from this notebook. Provider settings stay. A recovery copy is kept
+            inside .synapse/resets in your vault.
+          </p>
+          <label>
+            Type CLEAR MY NOTEBOOK
+            <input
+              aria-label="Clear confirmation"
+              value={clearText}
+              onChange={(e) => setClearText(e.target.value)}
+            />
+          </label>
+          <button
+            disabled={busy || clearText !== "CLEAR MY NOTEBOOK"}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await api<any>("/notebook/clear", {
+                  confirmation: clearText,
+                });
+                await refresh();
+                setArchived([]);
+                setTrashed([]);
+                setClearing(false);
+                setClearText("");
+                notify("Notebook cleared. Recovery copy: " + r.backup);
+              } catch (e) {
+                notify((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Clear data and keep recovery copy
+          </button>
+        </Modal>
+      )}
     </div>
   );
 }

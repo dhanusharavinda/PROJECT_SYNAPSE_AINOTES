@@ -12,7 +12,7 @@ function SheetShape({ item }: { item: CanvasItem }) {
     ],
     marker = "tip-" + item.id;
   const common = {
-    fill: "none",
+    fill: item.fill || "none",
     stroke: color,
     strokeWidth: sw,
     strokeLinecap: "round" as const,
@@ -24,6 +24,7 @@ function SheetShape({ item }: { item: CanvasItem }) {
       viewBox={`0 0 ${w} ${h}`}
       preserveAspectRatio="none"
       aria-label={item.kind === "pen" ? "Hand drawing" : item.kind}
+      style={{ opacity: item.opacity || 1 }}
     >
       <defs>
         <marker

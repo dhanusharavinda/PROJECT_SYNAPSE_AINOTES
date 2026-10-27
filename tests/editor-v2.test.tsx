@@ -74,6 +74,25 @@ async function notebook(value = "Before embeddings after.") {
   await waitFor(() => expect(core).toBeTruthy());
   return { core, handle, changed, command, ...view };
 }
+it("persists text alignment in Markdown and restores it in an editor", async () => {
+  const { core } = await notebook("Aligned writing");
+  act(() => {
+    core.commands.updateAttributes("paragraph", { textAlign: "center" });
+  });
+  const saved = core.getMarkdown();
+  expect(saved).toContain('data-align="center"');
+  act(() => core.commands.setContent(saved, { contentType: "markdown" }));
+  expect(core.state.doc.firstChild?.attrs.textAlign).toBe("center");
+});
+it("renumbers ordered lists after a point is removed", async () => {
+  const { core } = await notebook("1. First\n2. Second\n3. Third");
+  act(() => {
+    core.commands.setTextSelection(3);
+    core.commands.deleteNode("listItem");
+  });
+  expect(core.getMarkdown()).toContain("1. Second");
+  expect(core.getMarkdown()).toContain("2. Third");
+});
 it("preserves both diagrams when writing below the second one in a controlled note", async () => {
   const a = "11111111-1111-4111-8111-111111111111",
     b = "22222222-2222-4222-8222-222222222222";

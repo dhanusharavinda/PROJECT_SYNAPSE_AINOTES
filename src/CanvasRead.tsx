@@ -71,6 +71,8 @@ export default function CanvasRead({
                 width: item.width,
                 height: item.height,
                 transformOrigin: "top left",
+                fontSize:
+                  item.kind === "text" ? 16 * (item.textScale || 1) : undefined,
               }}
             >
               {item.kind === "text" || item.kind === "table" ? (
