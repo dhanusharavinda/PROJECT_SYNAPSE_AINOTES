@@ -1,5 +1,9 @@
 # Build review
 
+## Highlight hit-testing correction, version 1.3.1
+
+Final interaction review found SVG children could override the marker wrapper's pointer-event setting. A CSS correction makes translucent marker SVGs and their children ignore hits in Write mode. A real browser hit-test and mouse test verifies the underlying text receives focus, while the same marker remains selectable in Select mode. Receipt: work/notebook-v131-highlight-result.json. The 1.3.0 feature checks below remain applicable. No published 1.3.0 assets were overwritten.
+
 ## Dotted notebook and study tools, version 1.3.0
 
 Added a fourth theme with a 16-pixel dot grid, proportional group scaling, placed-text/emoji scaling, default drag/resize handles, and a selection-delete icon beside Eraser. Shape fill and fluorescent marker strokes persist in Markdown metadata. Saved pen colour is no longer inverted by dark theme CSS. Text colour backgrounds were removed. Paragraph alignment round-trips through Markdown using a sanitized attribute, and edited ordered lists normalize numbering. Slash ordering puts page links and page creation first.

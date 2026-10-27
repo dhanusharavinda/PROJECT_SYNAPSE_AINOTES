@@ -1,4 +1,5 @@
 /* Stable page geometry and quiet, contextual controls. */
+.clean-sheet .tool-write .sheet-object.kind-pen:has(svg[style*="0.32"]) :is(svg, svg *) {pointer-events:none !important;}
 .sheet-object.kind-text .note-editor p {
   line-height: calc(32px * var(--text-scale, 1)) !important;
   min-height: calc(32px * var(--text-scale, 1));
