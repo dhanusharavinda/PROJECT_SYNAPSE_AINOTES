@@ -35,6 +35,42 @@ it("rereads external deletions and refuses to recreate them from a stale autosav
   await seed(reopened);
   expect(await reopened.notes()).toHaveLength(0);
 });
+it("saves and clears a note date and preserves pixel geometry and additional shapes", async () => {
+  const note = (
+    await owner("post", "/api/notes").send({
+      title: "Dated page",
+      body: "My note",
+      noteDate: "2026-10-27",
+      canvas: {
+        width: 1200,
+        height: 600,
+        items: [
+          {
+            id: uid(),
+            kind: "ellipse",
+            x: 800,
+            y: 200,
+            width: 200,
+            height: 100,
+            strokeWidth: 3,
+          },
+        ],
+      },
+    })
+  ).body;
+  expect(note.noteDate).toBe("2026-10-27");
+  expect(note.canvas.width).toBe(1200);
+  const updated = await owner("put", "/api/notes/" + note.id)
+    .send({ ...note, noteDate: null })
+    .expect(200);
+  expect(updated.body.noteDate).toBeNull();
+  expect((await new Vault(root).note(note.id)).canvas?.items[0].kind).toBe(
+    "ellipse",
+  );
+  await owner("post", "/api/notes")
+    .send({ title: "Invalid date", noteDate: "2026-02-31" })
+    .expect(400);
+});
 it("moves several Markdown files to Trash and restores the exact note", async () => {
   const first = (
     await owner("post", "/api/notes").send({ title: "First", body: "One" })
@@ -51,6 +87,58 @@ it("moves several Markdown files to Trash and restores the exact note", async ()
     .send({})
     .expect(200);
   expect((await new Vault(root).note(first.id)).body).toBe("One");
+});
+it("shares explicitly placed images without granting unrelated vault files", async () => {
+  const image = uid() + ".png",
+    privateImage = uid() + ".png";
+  await fs.writeFile(path.join(root, "attachments", image), "image fixture");
+  await fs.writeFile(
+    path.join(root, "attachments", privateImage),
+    "private fixture",
+  );
+  const note = (
+    await owner("post", "/api/notes").send({
+      title: "Shared canvas",
+      body: "Writing",
+      canvas: {
+        width: 1000,
+        height: 400,
+        items: [
+          {
+            id: uid(),
+            kind: "image",
+            src: "../attachments/" + image,
+            x: 10,
+            y: 10,
+            width: 200,
+            height: 120,
+          },
+        ],
+      },
+    })
+  ).body;
+  const share = (
+    await owner("post", "/api/shares").send({
+      noteId: note.id,
+      role: "viewer",
+      label: "Class",
+    })
+  ).body;
+  await request(app.app)
+    .get("/files/attachments/" + image + "?share=" + share.id)
+    .expect(200);
+  await request(app.app)
+    .get("/files/attachments/" + privateImage + "?share=" + share.id)
+    .expect(403);
+});
+it("accepts graph-view position keys and exports actual Markdown note identifiers",async()=>{
+  const note=(await owner("post","/api/notes").send({title:"Graph positions"})).body;
+  const key=`focus-${note.id}-${note.id}`;
+  await owner("post","/api/positions").send({[key]:{x:155,y:85,pinned:false}}).expect(200);
+  expect((await owner("get","/api/bootstrap")).body.positions[key]).toEqual({x:155,y:85,pinned:false});
+  const canvas=JSON.parse(await fs.readFile(path.join(root,"maps","knowledge-graph.canvas"),"utf8"));
+  expect(canvas.nodes[0]).toMatchObject({id:note.id,file:`notes/${note.id}.md`,x:155,y:85});
+  await owner("post","/api/positions").send({"focus-invalid":{x:1,y:2,pinned:false}}).expect(400);
 });
 it("keeps a note editable when a linked note is deleted", async () => {
   const first = (

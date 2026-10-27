@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Controls,
@@ -118,6 +118,13 @@ function GraphView({
     [showLabels, setShowLabels] = useState(false),
     [tour, setTour] = useState<{ ids: string[]; index: number }>();
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
+  const drafts = useRef<
+      Record<string, { x: number; y: number; pinned?: boolean }>
+    >({}),
+    dragging = useRef(new Set<string>()),
+    positions = useRef(data.positions),
+    saveTail = useRef(Promise.resolve());
+  positions.current = data.positions;
   const groups = useMemo(
     () => [...new Set(data.notes.map((n) => n.group))].sort(),
     [data.notes],
@@ -151,16 +158,33 @@ function GraphView({
     [visible, connections, mode],
   );
   useEffect(() => {
-    setNodes(
+    for (const [key, point] of Object.entries(drafts.current)) {
+      const saved = data.positions[key];
+      if (
+        !dragging.current.has(key) &&
+        saved &&
+        saved.x === point.x &&
+        saved.y === point.y &&
+        saved.pinned === point.pinned
+      )
+        delete drafts.current[key];
+    }
+    setNodes((previous) =>
       visible.map((n) => ({
+        ...previous.find((item) => item.id === n.id),
         id: n.id,
         type: "concept",
-        position: data.positions[positionKey(n.id)] || layout[n.id],
+        position:
+          drafts.current[positionKey(n.id)] ||
+          data.positions[positionKey(n.id)] ||
+          layout[n.id],
         data: {
           note: n,
           selected: n.id === selected,
           focal: n.id === focus && mode === "focus",
-          pinned: data.positions[positionKey(n.id)]?.pinned,
+          pinned:
+            drafts.current[positionKey(n.id)]?.pinned ??
+            data.positions[positionKey(n.id)]?.pinned,
           open: onOpen,
           roadmap: true,
         },
@@ -206,14 +230,24 @@ function GraphView({
     setGroup("");
     setSearch("");
   }
-  async function savePosition(id: string, pin?: boolean) {
+  async function savePosition(
+    id: string,
+    pin?: boolean,
+    point?: { x: number; y: number },
+  ) {
     const node = nodes.find((n) => n.id === id);
     if (!node) return;
-    await api("/positions", {
-      ...data.positions,
-      [positionKey(id)]: { ...node.position, pinned: pin ?? true },
-    });
-    await refresh();
+    drafts.current[positionKey(id)] = {
+      ...(point || node.position),
+      pinned: pin ?? true,
+    };
+    saveTail.current = saveTail.current
+      .catch(() => {})
+      .then(async () => {
+        await api("/positions", { ...positions.current, ...drafts.current });
+        await refresh();
+      });
+    await saveTail.current;
   }
   const frameVersion = [
     focus,
@@ -251,10 +285,17 @@ function GraphView({
           <button
             onClick={async () => {
               try {
+                await saveTail.current.catch(() => {});
+                drafts.current = Object.fromEntries(
+                  Object.entries(drafts.current).filter(([, p]) => p.pinned),
+                );
                 await api(
                   "/positions",
                   Object.fromEntries(
-                    Object.entries(data.positions).filter(([, p]) => p.pinned),
+                    Object.entries({
+                      ...positions.current,
+                      ...drafts.current,
+                    }).filter(([, p]) => p.pinned),
                   ),
                 );
                 await refresh();
@@ -442,15 +483,35 @@ function GraphView({
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
-                onNodesChange={onNodesChange}
+                onNodesChange={(changes) => {
+                  for (const change of changes)
+                    if (change.type === "position" && change.position) {
+                      const key = positionKey(change.id);
+                      drafts.current[key] = {
+                        ...change.position,
+                        pinned:
+                          drafts.current[key]?.pinned ??
+                          data.positions[key]?.pinned,
+                      };
+                    }
+                  onNodesChange(changes);
+                }}
                 onNodeClick={(_e, n) => setSelected(n.id)}
                 onNodeDoubleClick={(_e, n) => {
                   const note = data.notes.find((x) => x.id === n.id);
                   if (note) onOpen(note);
                 }}
-                onNodeDragStop={(_e, n) =>
-                  savePosition(n.id, false).catch((e) => notify(e.message))
+                onNodeDragStart={(_e, n) =>
+                  dragging.current.add(positionKey(n.id))
                 }
+                onNodeDragStop={(_e, n) => {
+                  dragging.current.delete(positionKey(n.id));
+                  void savePosition(n.id, false, n.position).catch((e) =>
+                    notify(
+                      "Position not saved. Try moving it again. " + e.message,
+                    ),
+                  );
+                }}
                 fitView
                 fitViewOptions={{ maxZoom: 1, padding: 0.2 }}
                 minZoom={0.15}

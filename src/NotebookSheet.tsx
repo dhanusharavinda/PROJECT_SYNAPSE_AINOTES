@@ -5,36 +5,58 @@ import {
   useRef,
   useState,
   type ReactNode,
-  type PointerEvent as ReactPointerEvent,
+  type CSSProperties,
+  type PointerEvent as Pointer,
 } from "react";
 import {
   ArrowUpRight,
-  Copy,
+  Circle,
+  Diamond,
+  Eraser,
   Grip,
   ImagePlus,
-  Layers2,
   MousePointer2,
   PenLine,
-  Plus,
   Redo2,
   Square,
   Table2,
-  Trash2,
+  Triangle,
   Type,
   Undo2,
-  X,
+  Minus,
+  ChevronDown,
 } from "lucide-react";
 import type { CanvasItem, NoteCanvas } from "./types";
 import { fileUrl, mediaUrl } from "./api";
 import RichEditor, { type EditorHandle } from "./RichEditor";
 import { keyCombination, usePreferences } from "./preferences";
 import { storageMarkdown } from "./markdown";
-
+import { copyText } from "./clipboard";
+import type { Editor as CoreEditor } from "@tiptap/core";
+import SheetShape from "./SheetShape";
+import {
+  finishStroke,
+  migrateScene,
+  resizeItem,
+  sameScene,
+  shapeKinds,
+  eraseStrokes,
+  translate,
+  type Point,
+} from "./sheetModel";
 type Tool =
-  "write" | "select" | "pen" | "arrow" | "rectangle" | "text" | "table";
-const empty: NoteCanvas = { items: [], height: 400 };
-const tableText =
-  "| Topic | Explanation |\n| --- | --- |\n| Idea | Write here |\n| Example | Write here |";
+  | "write"
+  | "select"
+  | "pen"
+  | "eraser"
+  | "arrow"
+  | "rectangle"
+  | "ellipse"
+  | "diamond"
+  | "triangle"
+  | "line"
+  | "text"
+  | "table";
 export interface SheetHandle {
   tool: (tool: Tool) => void;
   image: (src: string, alt: string) => void;
@@ -42,11 +64,27 @@ export interface SheetHandle {
   editor: () => EditorHandle | null;
   block: (kind: "table" | "text", markdown: string) => void;
 }
-function safeMedia(src: string) {
-  const value = src.replace(/^\.\.\/(attachments|drawings)\//, "/files/$1/");
-  return value.startsWith("/files/attachments/") ||
-    value.startsWith("/files/drawings/")
-    ? mediaUrl(value)
+type Gesture = {
+  type: "move" | "resize" | "draw" | "erase" | "select";
+  origin: NoteCanvas;
+  start: Point;
+  last: Point;
+  ids: string[];
+  rect: { left: number; top: number };
+  kind?: Tool;
+};
+const empty: NoteCanvas = { items: [], height: 500 },
+  tableText =
+    "| Topic | Explanation |\n| --- | --- |\n| Idea | Write here |\n| Example | Write here |";
+let copiedItems: CanvasItem[] = [];
+let copiedProse = "";
+let copiedPlain = "";
+function imageSource(src = "") {
+  const local = src.replace(/^\.\.\/(attachments|drawings)\//, "/files/$1/");
+  return /^\/files\/(attachments|drawings)\/[-a-zA-Z0-9]+\.[a-zA-Z0-9]+(?:\?.*)?$/.test(
+    local,
+  )
+    ? mediaUrl(local)
     : "";
 }
 export default forwardRef<
@@ -64,821 +102,1267 @@ export default forwardRef<
   { value, onChange, onDrawing, onImage, onCommand, onUpload, children },
   ref,
 ) {
-  const [scene, setScene] = useState<NoteCanvas>(value || empty);
-  const latest = useRef(scene);
-  const sent = useRef(value);
+  const [scene, setScene] = useState<NoteCanvas>(value || empty),
+    latest = useRef(scene),
+    sent = useRef(value),
+    received = useRef(value);
   const change = useRef(onChange);
   change.current = onChange;
-  const [tool, setTool] = useState<Tool>("write");
-  const [selected, setSelected] = useState<string>();
-  const [color, setColor] = useState("#24392f");
-  const [scale, setScale] = useState(1);
-  const sheet = useRef<HTMLDivElement>(null);
-  const history = useRef<NoteCanvas[]>([]),
+  const [tool, setTool] = useState<Tool>("write"),
+    [selected, setSelected] = useState<string[]>([]),
+    [color, setColor] = useState("#24392f"),
+    [size, setSize] = useState(2.4);
+  const [menu, setMenu] = useState<{ x: number; y: number }>(),
+    [shapes, setShapes] = useState(false),
+    [resizing, setResizing] = useState(false),
+    [activeGesture, setActiveGesture] = useState(false),
+    [marquee, setMarquee] = useState<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }>();
+  const root = useRef<HTMLDivElement>(null),
+    gesture = useRef<Gesture | undefined>(undefined),
+    history = useRef<NoteCanvas[]>([]),
     future = useRef<NoteCanvas[]>([]);
-  const gesture = useRef<
-    | {
-        start: [number, number];
-        origin: NoteCanvas;
-        id: string;
-        operation: "move" | "resize" | "create";
-      }
-    | undefined
-  >(undefined);
-  const [drawingVersion, setDrawingVersion] = useState(0);
-  const preferences = usePreferences();
-  const textEditors = useRef(new Map<string, EditorHandle>());
+  const pasteTarget = useRef<HTMLTextAreaElement>(null);
+  const editors = useRef(new Map<string, EditorHandle>()),
+    pref = usePreferences(),
+    active = useRef(false),
+    [drawingVersion, setDrawingVersion] = useState(0);
+  const [viewWidth, setViewWidth] = useState(1000);
   useEffect(() => {
-    const saved = () => setDrawingVersion(Date.now());
-    window.addEventListener("synapse:drawing-saved", saved);
-    return () => window.removeEventListener("synapse:drawing-saved", saved);
-  }, []);
+    let live = true;
+    const measure = () => {
+      if (
+        !live ||
+        !root.current ||
+        document.documentElement.dataset.theme !== "paper"
+      )
+        return;
+      const editor = root.current.querySelector<HTMLElement>(".note-editor");
+      if (!editor) return;
+      const computed = getComputedStyle(editor),
+        probe = document.createElement("div"),
+        marker = document.createElement("span");
+      probe.style.cssText =
+        "position:absolute;visibility:hidden;pointer-events:none;white-space:nowrap;padding:0;margin:0;";
+      probe.style.font = computed.font;
+      probe.style.lineHeight = "32px";
+      marker.style.cssText =
+        "display:inline-block;width:0;height:0;padding:0;margin:0;vertical-align:baseline";
+      probe.append("Ag", marker);
+      root.current.append(probe);
+      const baseline =
+        marker.getBoundingClientRect().top - probe.getBoundingClientRect().top;
+      probe.remove();
+      root.current.style.setProperty("--rule-position", baseline - 31 + "px");
+    };
+    void document.fonts?.ready.then(measure);
+    measure();
+    window.addEventListener("synapse:theme", measure);
+    return () => {
+      live = false;
+      window.removeEventListener("synapse:theme", measure);
+    };
+  }, [pref.font]);
+  const fullSelection = useRef(false),
+    proseHistory = useRef(new WeakMap<NoteCanvas, string>());
+  function prose() {
+    return (
+      root.current?.querySelector(".sheet-prose .tiptap") as
+        (HTMLElement & { editor?: CoreEditor }) | null
+    )?.editor;
+  }
   useEffect(() => {
-    if (
-      value &&
-      value !== sent.current &&
-      JSON.stringify(value) !== JSON.stringify(latest.current)
-    ) {
-      latest.current = value;
-      setScene(value);
-      history.current = [];
-      future.current = [];
-    }
-    sent.current = value;
-  }, [value]);
-  useEffect(() => {
-    if (!sheet.current) return;
-    const observer = new ResizeObserver(() => {
-      if (sheet.current) setScale(sheet.current.clientWidth / 1000 || 1);
-    });
-    observer.observe(sheet.current);
-    setScale(sheet.current.clientWidth / 1000 || 1);
+    if (!root.current) return;
+    const observer = new ResizeObserver(() =>
+      setViewWidth(root.current?.clientWidth || 1000),
+    );
+    observer.observe(root.current);
+    setViewWidth(root.current.clientWidth || 1000);
     return () => observer.disconnect();
   }, []);
-  function commit(next: NoteCanvas, previous = latest.current) {
-    if (JSON.stringify(next) === JSON.stringify(previous)) return;
-    history.current = [...history.current.slice(-79), previous];
+  const paint = useRef<number | undefined>(undefined),
+    queued = useRef<NoteCanvas | undefined>(undefined);
+  useEffect(() => {
+    const update = () => setDrawingVersion(Date.now());
+    window.addEventListener("synapse:drawing-saved", update);
+    return () => {
+      window.removeEventListener("synapse:drawing-saved", update);
+      if (paint.current) cancelAnimationFrame(paint.current);
+    };
+  }, []);
+  useEffect(() => {
+    if (!value || sameScene(value, received.current)) return;
+    received.current = value;
+    if (
+      gesture.current ||
+      sameScene(value, sent.current) ||
+      sameScene(value, latest.current)
+    )
+      return;
+    latest.current = value;
+    setScene(value);
+  }, [value]);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: Event) => {
+      if (!(e.target as HTMLElement)?.closest?.(".sheet-context"))
+        setMenu(undefined);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+  function preview(next: NoteCanvas) {
+    latest.current = next;
+    queued.current = next;
+    if (!paint.current)
+      paint.current = requestAnimationFrame(() => {
+        paint.current = undefined;
+        if (queued.current) setScene(queued.current);
+      });
+  }
+  function commit(next: NoteCanvas, previous = latest.current, force = false) {
+    next = {
+      ...next,
+      width: Math.max(
+        next.width || 0,
+        root.current?.clientWidth || 0,
+        ...next.items.map((i) => i.x + i.width),
+      ),
+    };
+    if (sameScene(next, previous) && !force) return;
+    if (paint.current) cancelAnimationFrame(paint.current);
+    paint.current = undefined;
+    queued.current = undefined;
+    history.current = [...history.current.slice(-99), previous];
     future.current = [];
     latest.current = next;
     sent.current = next;
     setScene(next);
     change.current(next);
   }
-  function preview(next: NoteCanvas) {
+  function emit(next: NoteCanvas) {
+    if (proseHistory.current.has(next)) {
+      const editor = prose();
+      if (editor) {
+        proseHistory.current.set(latest.current, editor.getMarkdown());
+        editor.commands.setContent(proseHistory.current.get(next) || "", {
+          contentType: "markdown",
+        });
+      }
+    }
+    if (paint.current) cancelAnimationFrame(paint.current);
+    paint.current = undefined;
+    queued.current = undefined;
     latest.current = next;
+    sent.current = next;
     setScene(next);
+    change.current(next);
+    setSelected([]);
   }
   function undo() {
     const previous = history.current.pop();
-    if (!previous) return;
-    future.current.push(latest.current);
-    preview(previous);
-    sent.current = previous;
-    change.current(previous);
+    if (previous) {
+      future.current.push(latest.current);
+      emit(previous);
+    }
   }
   function redo() {
     const next = future.current.pop();
-    if (!next) return;
-    history.current.push(latest.current);
-    preview(next);
-    sent.current = next;
-    change.current(next);
+    if (next) {
+      history.current.push(latest.current);
+      emit(next);
+    }
   }
-  function position(
-    event: ReactPointerEvent | React.MouseEvent,
-  ): [number, number] {
-    const rect = sheet.current!.getBoundingClientRect();
+  function focus() {
+    active.current = true;
+    (document.activeElement as HTMLElement)?.blur?.();
+    root.current?.focus({ preventScroll: true });
+  }
+  function base() {
+    return latest.current.width
+      ? latest.current
+      : migrateScene(
+          latest.current,
+          Math.max(300, root.current?.clientWidth || 1000),
+        );
+  }
+  function at(e: { clientX: number; clientY: number }): Point {
+    const rect = root.current!.getBoundingClientRect();
     return [
-      Math.max(0, (event.clientX - rect.left) / scale),
-      Math.max(0, (event.clientY - rect.top) / scale),
+      Math.max(0, e.clientX - rect.left),
+      Math.max(0, e.clientY - rect.top),
     ];
   }
-  function placement() {
-    const editor = sheet.current?.querySelector<HTMLElement>(
-      ".editor-wrap > .tiptap, .editor-wrap .note-editor",
+  function update(id: string, patch: Partial<CanvasItem>) {
+    if (gesture.current) return;
+    const before = latest.current,
+      items = before.items.map((i) => (i.id === id ? { ...i, ...patch } : i));
+    commit({
+      ...before,
+      items,
+      height: Math.max(before.height, ...items.map((i) => i.y + i.height + 32)),
+    });
+  }
+  function add(item: Omit<CanvasItem, "id">, focusText = false) {
+    const before = latest.current,
+      next = base(),
+      id = crypto.randomUUID(),
+      placed = { ...item, id };
+    commit(
+      {
+        ...next,
+        items: [...next.items, placed],
+        height: Math.max(next.height, placed.y + placed.height + 80),
+      },
+      before,
     );
-    const bounds = sheet.current?.getBoundingClientRect();
-    const y =
-      editor && bounds
-        ? Math.max(
-            50,
-            (editor.getBoundingClientRect().bottom - bounds.top) / scale + 16,
-          )
-        : 70;
+    setSelected([id]);
+    setTool("write");
+    active.current = true;
+    if (focusText)
+      setTimeout(() => {
+        editors.current.get(id)?.getEditor()?.commands.focus("start");
+      }, 0);
+    return id;
+  }
+  function place() {
+    const next = base(),
+      node = root.current?.querySelector(".sheet-prose .tiptap"),
+      rect = root.current?.getBoundingClientRect();
     return {
-      x: Math.min(650, 24 + (latest.current.items.length % 4) * 30),
+      x: 24,
       y: Math.max(
-        y,
-        ...latest.current.items.map((item) => item.y + item.height + 18),
+        20,
+        node && rect ? node.getBoundingClientRect().bottom - rect.top + 20 : 20,
+        ...next.items.map((i) => i.y + i.height + 16),
       ),
     };
   }
-  function add(item: Omit<CanvasItem, "id">) {
-    const next = { ...item, id: crypto.randomUUID() };
-    commit({
-      items: [...latest.current.items, next],
-      height: Math.max(latest.current.height, next.y + next.height + 40),
-    });
-    setSelected(next.id);
-    setTool("write");
-    return next.id;
-  }
-  function update(id: string, patch: Partial<CanvasItem>) {
-    const items = latest.current.items.map((item) =>
-      item.id === id ? { ...item, ...patch } : item,
+  function remove(ids = selected) {
+    const all = fullSelection.current;
+    if (all) {
+      const editor = prose();
+      if (editor) {
+        proseHistory.current.set(latest.current, editor.getMarkdown());
+        editor.commands.clearContent();
+      }
+      fullSelection.current = false;
+    }
+    commit(
+      {
+        ...latest.current,
+        items: latest.current.items.filter((i) => !ids.includes(i.id)),
+      },
+      latest.current,
+      all,
     );
-    commit({
-      items,
-      height: Math.max(
-        latest.current.height,
-        ...items.map((item) => item.y + item.height + 40),
-      ),
-    });
+    setSelected([]);
+    setMenu(undefined);
+    focus();
   }
-  function remove() {
-    if (!selected) return;
-    const items = latest.current.items.filter((item) => item.id !== selected);
-    commit({
-      items,
-      height: Math.max(400, ...items.map((item) => item.y + item.height + 36)),
-    });
-    setSelected(undefined);
+  async function copy() {
+    copiedProse = fullSelection.current ? prose()?.getMarkdown() || "" : "";
+    copiedItems = latest.current.items
+      .filter((i) => selected.includes(i.id))
+      .map((i) => structuredClone(i));
+    copiedPlain = [
+      copiedProse,
+      ...copiedItems.map((item) =>
+        item.kind === "text" || item.kind === "table"
+          ? item.text || ""
+          : item.kind === "image"
+            ? `![${item.text || "Image"}](${item.src})`
+            : item.kind === "drawing"
+              ? `![Drawing](../drawings/${item.drawingId}.svg)`
+              : `[${item.kind === "pen" ? "Drawing" : item.kind}]`,
+      ),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    copiedPlain = copiedPlain
+      .replace(/^:::option\s+\{"label":"([^"]*)"\}\s*$/gm, (_match, label) =>
+        label ? "**" + label + "**" : "",
+      )
+      .replace(/^:::(?:variants|endvariants|endoption)\s*$/gm, "");
+    copiedPlain = copiedPlain.replace(/\r\n/g, "\n");
+    await copyText(copiedPlain);
+  }
+  async function paste(provided?: string) {
+    let items = copiedItems;
+    let text = copiedProse;
+    try {
+      const clipboard = (
+        provided === undefined ? await navigator.clipboard.readText() : provided
+      ).replace(/\r\n/g, "\n");
+      if (clipboard !== copiedPlain) {
+        if (clipboard)
+          add(
+            {
+              kind: "text",
+              text: clipboard.slice(0, 200000),
+              ...place(),
+              width: 360,
+              height: 60,
+            },
+            true,
+          );
+        return;
+      }
+    } catch {
+      return;
+    }
+    if (!items.length && !text) return;
+    const before = latest.current,
+      next = base(),
+      clones = items.map((i) => ({
+        ...i,
+        id: crypto.randomUUID(),
+        x: i.x + 24,
+        y: i.y + 24,
+      }));
+    if (text) {
+      const editor = prose();
+      if (editor) {
+        proseHistory.current.set(before, editor.getMarkdown());
+        editor.commands.setContent(editor.getMarkdown() + "\n\n" + text, {
+          contentType: "markdown",
+        });
+      }
+    }
+    commit(
+      {
+        ...next,
+        items: [...next.items, ...clones],
+        height: Math.max(
+          next.height,
+          ...clones.map((i) => i.y + i.height + 40),
+        ),
+      },
+      before,
+      !!text,
+    );
+    setSelected(clones.map((i) => i.id));
+    focus();
+  }
+  function duplicate() {
+    const before = latest.current,
+      clones = before.items
+        .filter((i) => selected.includes(i.id))
+        .map((i) => ({
+          ...structuredClone(i),
+          id: crypto.randomUUID(),
+          x: i.x + 20,
+          y: i.y + 20,
+        }));
+    commit({ ...before, items: [...before.items, ...clones] });
+    setSelected(clones.map((i) => i.id));
+    setMenu(undefined);
+  }
+  function choose(next: Tool) {
+    fullSelection.current = false;
+    setTool(next);
+    setMenu(undefined);
+    setShapes(false);
+    setSelected([]);
+    setResizing(false);
+    focus();
   }
   useImperativeHandle(ref, () => ({
-    tool: setTool,
-    image: (src, alt) =>
+    tool: choose,
+    image: (src, text) =>
       add({
         kind: "image",
         src: storageMarkdown(src),
-        text: alt,
-        ...placement(),
-        width: 260,
-        height: 190,
-      }),
-    drawing: (id) =>
-      add({
-        kind: "drawing",
-        drawingId: id,
-        ...placement(),
-        width: 300,
-        height: 220,
-      }),
-    editor: () => (selected ? textEditors.current.get(selected) || null : null),
-    block: (kind, text) =>
-      add({
-        kind,
         text,
-        ...placement(),
-        width: kind === "table" ? 420 : 340,
+        ...place(),
+        width: 240,
         height: 180,
       }),
+    drawing: (drawingId) =>
+      add({ kind: "drawing", drawingId, ...place(), width: 280, height: 210 }),
+    editor: () =>
+      selected.length === 1 ? editors.current.get(selected[0]) || null : null,
+    block: (kind, text) =>
+      add(
+        {
+          kind,
+          text,
+          ...place(),
+          width: kind === "table" ? 420 : 320,
+          height: kind === "table" ? 180 : 100,
+        },
+        true,
+      ),
   }));
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || document.querySelector('[role="dialog"]'))
+  function perform(action: string, event: Event) {
+    if (document.querySelector('[role="dialog"]')) return;
+    const editing = !!(document.activeElement as HTMLElement)?.closest(
+      "input,textarea,[contenteditable=true]",
+    );
+    const toolMap: Record<string, Tool> = {
+      draw: "pen",
+      eraser: "eraser",
+      select: "select",
+      write: "write",
+      text: "text",
+      arrow: "arrow",
+      rectangle: "rectangle",
+      ellipse: "ellipse",
+      diamond: "diamond",
+      triangle: "triangle",
+      line: "line",
+      table: "table",
+    };
+    if (toolMap[action]) {
+      event.preventDefault();
+      choose(toolMap[action]);
+      return;
+    }
+    if (editing || !active.current) return;
+    if (action === "undo") {
+      event.preventDefault();
+      undo();
+    } else if (action === "redo") {
+      event.preventDefault();
+      redo();
+    } else if (action === "select-all") {
+      event.preventDefault();
+      fullSelection.current = true;
+      setSelected(latest.current.items.map((i) => i.id));
+      setTool("select");
+    } else if (
+      action === "delete" &&
+      (selected.length || fullSelection.current)
+    ) {
+      event.preventDefault();
+      remove();
+    } else if (
+      action === "copy" &&
+      (selected.length || fullSelection.current)
+    ) {
+      event.preventDefault();
+      void copy();
+    } else if (action === "cut" && (selected.length || fullSelection.current)) {
+      event.preventDefault();
+      void copy().then(() => remove());
+    } else if (action === "paste") {
+      pasteTarget.current?.focus({ preventScroll: true });
+      if (
+        event instanceof KeyboardEvent &&
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "v"
+      )
         return;
-      const active = event.target as HTMLElement;
-      const editing = active?.closest("input,textarea,[contenteditable=true]");
-      if (event.key === "Escape") {
-        setTool("write");
-        setSelected(undefined);
+      event.preventDefault();
+      if (window.synapseEditing) window.synapseEditing.native("paste");
+      else
+        void paste().finally(() => {
+          if (document.activeElement === pasteTarget.current) focus();
+        });
+    } else if (action === "duplicate" && selected.length) {
+      event.preventDefault();
+      duplicate();
+    }
+  }
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || document.querySelector('[role="dialog"]'))
+        return;
+      const editing = !!(e.target as HTMLElement).closest(
+        "input,textarea,[contenteditable=true]",
+      );
+      if (e.key === "Escape") {
+        setMenu(undefined);
+        setShapes(false);
+        choose("write");
         return;
       }
-      const action = Object.entries(preferences.shortcuts).find(
-        ([, shortcut]) => shortcut === keyCombination(event),
+      const custom = Object.entries(pref.shortcuts).find(
+        ([, key]) => key && key === keyCombination(e),
       )?.[0];
-      if (
-        action &&
-        (!editing || event.altKey || event.ctrlKey || event.metaKey)
-      ) {
-        if (["draw", "select", "text", "arrow", "table"].includes(action)) {
-          event.preventDefault();
-          setTool(action === "draw" ? "pen" : (action as Tool));
-          return;
-        }
+      if (custom && (!editing || e.ctrlKey || e.altKey || e.metaKey)) {
+        perform(custom, e);
+        if (e.defaultPrevented) return;
       }
       if (editing) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        event.shiftKey ? redo() : undo();
-      } else if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "y"
-      ) {
-        event.preventDefault();
-        redo();
-      } else if (selected && ["Delete", "Backspace"].includes(event.key)) {
-        event.preventDefault();
-        remove();
-      } else if (selected && /^Arrow/.test(event.key)) {
-        const item = latest.current.items.find((item) => item.id === selected);
-        if (!item) return;
-        event.preventDefault();
-        const step = event.shiftKey ? 10 : 1;
-        update(selected, {
-          x: Math.max(
-            0,
-            Math.min(
-              1000 - item.width,
-              item.x +
-                (event.key === "ArrowRight"
-                  ? step
-                  : event.key === "ArrowLeft"
-                    ? -step
-                    : 0),
-            ),
-          ),
-          y: Math.max(
-            0,
-            item.y +
-              (event.key === "ArrowDown"
-                ? step
-                : event.key === "ArrowUp"
-                  ? -step
-                  : 0),
-          ),
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const map: Record<string, string> = {
+          z: e.shiftKey ? "redo" : "undo",
+          y: "redo",
+          a: "select-all",
+          c: "copy",
+          x: "cut",
+          v: "paste",
+          d: "duplicate",
+        };
+        if (map[e.key.toLowerCase()]) perform(map[e.key.toLowerCase()], e);
+      }
+      if (["Delete", "Backspace"].includes(e.key)) perform("delete", e);
+      if (selected.length && /^Arrow/.test(e.key)) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1,
+          dx =
+            e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0,
+          dy = e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0;
+        commit({
+          ...latest.current,
+          items: translate(latest.current.items, selected, dx, dy),
         });
       }
     };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    const command = (e: Event) => {
+      if (!e.defaultPrevented) perform((e as CustomEvent).detail, e);
+    };
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("synapse:action", command);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("synapse:action", command);
+    };
   });
-  function start(event: ReactPointerEvent) {
+  function begin(
+    e: Pointer,
+    type: Gesture["type"],
+    ids: string[] = selected,
+    kind?: Tool,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    focus();
+    setMenu(undefined);
+    const rect = root.current!.getBoundingClientRect(),
+      point: Point = [e.clientX - rect.left, e.clientY - rect.top],
+      origin = latest.current,
+      next = base();
+    gesture.current = {
+      type,
+      origin,
+      start: point,
+      last: point,
+      ids,
+      rect: { left: rect.left, top: rect.top },
+      kind,
+    };
+    if (next !== origin) preview(next);
+    root.current?.setPointerCapture(e.pointerId);
+    setActiveGesture(true);
+    return point;
+  }
+  function start(e: Pointer) {
     if (
-      event.button !== 0 ||
-      (event.target as HTMLElement).closest(
-        "button,input,.editor-toolbar,.table-actions,.context-menu,.slash-menu",
+      e.button !== 0 ||
+      (e.target as HTMLElement).closest(
+        "button,input,.context-menu,.slash-menu,.sheet-context",
       )
     )
       return;
-    if (tool === "write") return;
-    const point = position(event);
     if (tool === "select") {
-      if (!(event.target as HTMLElement).closest(".sheet-object"))
-        setSelected(undefined);
+      if ((e.target as HTMLElement).closest(".sheet-object")) return;
+      begin(e, "select", []);
+      setSelected([]);
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
-    if (tool === "text" || tool === "table") {
-      const id = add({
-        kind: tool,
-        x: Math.min(point[0], 660),
-        y: point[1],
-        width: tool === "table" ? 420 : 300,
-        height: tool === "table" ? 190 : 100,
-        text: tool === "table" ? tableText : "",
-      });
-      setTimeout(
-        () =>
-          sheet.current
-            ?.querySelector<HTMLElement>(
-              `[data-object-id="${id}"] [contenteditable=true]`,
-            )
-            ?.focus(),
-        20,
+    if (tool === "write" || tool === "text" || tool === "table") {
+      if (
+        tool === "write" &&
+        (e.target as HTMLElement).closest(
+          ".sheet-object,.variant-controls,.variant-label-row,.code-toolbar,.inline-drawing,.notebook-image,pre,table,a",
+        )
+      )
+        return;
+      if (tool === "write") {
+        const target = e.target as HTMLElement,
+          editable = target.closest("[contenteditable=true]");
+        if (editable) {
+          const block = target.closest("p,h1,h2,h3,li,blockquote") || editable;
+          const range = document.createRange();
+          range.selectNodeContents(block);
+          const hit = [...range.getClientRects()].some(
+            (rect) =>
+              e.clientX >= rect.left - 3 &&
+              e.clientX <= rect.right + 3 &&
+              e.clientY >= rect.top - 4 &&
+              e.clientY <= rect.bottom + 4,
+          );
+          if (
+            hit ||
+            (!block.textContent?.trim() &&
+              e.clientX - block.getBoundingClientRect().left < 14)
+          )
+            return;
+        }
+      }
+      const point = at(e);
+      e.preventDefault();
+      e.stopPropagation();
+      add(
+        {
+          kind: tool === "table" ? "table" : "text",
+          x: point[0],
+          y:
+            document.documentElement.dataset.theme === "paper" &&
+            tool !== "table"
+              ? Math.floor(point[1] / 32) * 32
+              : point[1],
+          width:
+            tool === "table"
+              ? 420
+              : Math.max(
+                  80,
+                  Math.min(
+                    360,
+                    (root.current?.clientWidth || 1000) - point[0] - 8,
+                  ),
+                ),
+          height: tool === "table" ? 180 : 40,
+          text: tool === "table" ? tableText : "",
+        },
+        true,
       );
       return;
     }
-    const item: CanvasItem = {
-      id: crypto.randomUUID(),
-      kind: tool,
-      x: point[0],
-      y: point[1],
-      width: 1,
-      height: 1,
-      color,
-      points: [[0, 0]],
-    };
-    gesture.current = {
-      start: point,
-      origin: latest.current,
-      id: item.id,
-      operation: "create",
-    };
-    preview({ ...latest.current, items: [...latest.current.items, item] });
-    setSelected(item.id);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-  function move(event: ReactPointerEvent) {
-    const current = gesture.current;
-    if (!current) return;
-    const point = position(event),
-      dx = point[0] - current.start[0],
-      dy = point[1] - current.start[1];
-    const before = current.origin.items.find((item) => item.id === current.id);
-    const items = latest.current.items.map((item) => {
-      if (item.id !== current.id) return item;
-      if (current.operation === "move" && before)
-        return {
-          ...item,
-          x: Math.max(0, Math.min(1000 - item.width, before.x + dx)),
-          y: Math.max(0, before.y + dy),
-        };
-      if (current.operation === "resize" && before) {
-        const media = item.kind === "drawing" || item.kind === "image";
-        const width = Math.max(60, Math.min(1000 - item.x, before.width + dx)),
-          height = media
-            ? (width * before.height) / before.width
-            : Math.max(30, before.height + dy);
-        return {
-          ...item,
-          width,
-          height,
-          points: before.points?.map(
-            ([x, y]) =>
-              [(x * width) / before.width, (y * height) / before.height] as [
-                number,
-                number,
-              ],
-          ),
-        };
-      }
-      return {
-        ...item,
-        points:
-          tool === "pen"
-            ? [...(item.points || []), [dx, dy] as [number, number]].slice(
-                0,
-                15000,
-              )
-            : ([
-                [0, 0],
-                [dx, dy],
-              ] as [number, number][]),
-        width: Math.max(1, Math.abs(dx)),
-        height: Math.max(1, Math.abs(dy)),
-      };
+    if (tool === "eraser") {
+      const point = begin(e, "erase", []);
+      erase(point, point);
+      return;
+    }
+    const point = begin(e, "draw", [], tool),
+      id = crypto.randomUUID();
+    gesture.current!.ids = [id];
+    preview({
+      ...latest.current,
+      items: [
+        ...latest.current.items,
+        {
+          id,
+          kind: tool as CanvasItem["kind"],
+          x: point[0],
+          y: point[1],
+          width: 1,
+          height: 1,
+          color,
+          strokeWidth: size,
+          points: [[0, 0]],
+        },
+      ],
     });
-    preview({ items, height: Math.max(latest.current.height, point[1] + 70) });
+    setSelected([]);
   }
-  function end(event: ReactPointerEvent) {
-    const current = gesture.current;
-    if (!current) return;
+  function erase(a: Point, b: Point) {
+    preview({
+      ...latest.current,
+      items: eraseStrokes(latest.current.items, a, b, 10),
+    });
+  }
+  function move(e: Pointer) {
+    const g = gesture.current;
+    if (!g) return;
+    const point = at(e),
+      dx = point[0] - g.start[0],
+      dy = point[1] - g.start[1];
+    if (g.type === "select") {
+      const box = {
+        x: Math.min(point[0], g.start[0]),
+        y: Math.min(point[1], g.start[1]),
+        width: Math.abs(dx),
+        height: Math.abs(dy),
+      };
+      setMarquee(box);
+      setSelected(
+        latest.current.items
+          .filter(
+            (i) =>
+              i.x >= box.x &&
+              i.y >= box.y &&
+              i.x + i.width <= box.x + box.width &&
+              i.y + i.height <= box.y + box.height,
+          )
+          .map((i) => i.id),
+      );
+      return;
+    }
+    if (g.type === "erase") {
+      erase(g.last, point);
+      g.last = point;
+      return;
+    }
+    const origin = migrateScene(g.origin, latest.current.width || 1000);
+    let items = latest.current.items;
+    if (g.type === "move") items = translate(origin.items, g.ids, dx, dy);
+    else if (g.type === "resize")
+      items = origin.items.map((i) =>
+        g.ids.includes(i.id) ? resizeItem(i, dx, dy) : i,
+      );
+    else
+      items = items.map((i) => {
+        if (i.id !== g.ids[0]) return i;
+        const samples = e.nativeEvent.getCoalescedEvents?.() || [e.nativeEvent],
+          points =
+            g.kind === "pen"
+              ? [
+                  ...(i.points || []),
+                  ...samples.map(
+                    (sample) =>
+                      [
+                        sample.clientX -
+                          root.current!.getBoundingClientRect().left -
+                          g.start[0],
+                        sample.clientY -
+                          root.current!.getBoundingClientRect().top -
+                          g.start[1],
+                      ] as Point,
+                  ),
+                ].slice(-15000)
+              : ([
+                  [0, 0],
+                  [dx, dy],
+                ] as Point[]);
+        return {
+          ...i,
+          points,
+          width: Math.max(1, Math.abs(dx)),
+          height: Math.max(1, Math.abs(dy)),
+        };
+      });
+    preview({
+      ...latest.current,
+      items,
+      height: Math.max(
+        latest.current.height,
+        point[1] + 60,
+        ...items.map((i) => i.y + i.height + 40),
+      ),
+    });
+    g.last = point;
+  }
+  function end(e: Pointer) {
+    const g = gesture.current;
+    if (!g) return;
     let next = latest.current;
-    if (current.operation === "create") {
+    if (g.type === "draw")
       next = {
         ...next,
-        items: next.items.map((item) => {
-          if (item.id !== current.id) return item;
-          const points = item.points || [[0, 0]];
-          const minX = Math.min(...points.map((p) => p[0])),
-            minY = Math.min(...points.map((p) => p[1]));
-          const width = Math.max(
-              2,
-              Math.max(...points.map((p) => p[0])) - minX,
-            ),
-            height = Math.max(2, Math.max(...points.map((p) => p[1])) - minY);
-          return {
-            ...item,
-            x: Math.max(0, item.x + minX - 4),
-            y: Math.max(0, item.y + minY - 4),
-            width: width + 8,
-            height: height + 8,
-            points: points.map(
-              ([x, y]) => [x - minX + 4, y - minY + 4] as [number, number],
-            ),
-          };
-        }),
+        items: next.items.map((i) => (i.id === g.ids[0] ? finishStroke(i) : i)),
       };
-    }
     gesture.current = undefined;
-    commit(next, current.origin);
-    if (event.currentTarget.hasPointerCapture(event.pointerId))
-      event.currentTarget.releasePointerCapture(event.pointerId);
+    setActiveGesture(false);
+    setMarquee(undefined);
+    if (g.type !== "select") commit(next, g.origin);
+    if (root.current?.hasPointerCapture(e.pointerId))
+      root.current.releasePointerCapture(e.pointerId);
   }
-  function drag(
-    event: ReactPointerEvent,
-    item: CanvasItem,
-    operation: "move" | "resize",
-  ) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setSelected(item.id);
-    gesture.current = {
-      start: position(event),
-      origin: latest.current,
-      id: item.id,
-      operation,
-    };
-    sheet.current?.setPointerCapture(event.pointerId);
+  function objectDown(e: Pointer, item: CanvasItem) {
+    if (e.button !== 0 || !["write", "select"].includes(tool)) return;
+    fullSelection.current = false;
+    if (e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelected((ids) =>
+        ids.includes(item.id)
+          ? ids.filter((id) => id !== item.id)
+          : [...ids, item.id],
+      );
+      return;
+    }
+    const ids = selected.includes(item.id) ? selected : [item.id];
+    setSelected(ids);
+    active.current = true;
+    if (tool === "select" || !["text", "table"].includes(item.kind))
+      begin(e, "move", ids);
   }
-  const selectedItem = scene.items.find((item) => item.id === selected);
-  const buttons = [
-    ["write", "Write", Type],
-    ["select", "Move", MousePointer2],
-    ["pen", "Pen", PenLine],
-    ["arrow", "Arrow", ArrowUpRight],
-    ["rectangle", "Shape", Square],
-    ["text", "Text box", Type],
-    ["table", "Table", Table2],
-  ] as const;
+  const selectedItems = scene.items.filter((i) => selected.includes(i.id)),
+    item = selectedItems.length === 1 ? selectedItems[0] : undefined;
+  const tools = [
+      ["write", "Write", Type],
+      ["select", "Select", MousePointer2],
+      ["pen", "Pen", PenLine],
+      ["eraser", "Eraser", Eraser],
+      ["arrow", "Arrow", ArrowUpRight],
+    ] as const,
+    shapeTools = [
+      ["rectangle", "Rectangle", Square],
+      ["ellipse", "Ellipse", Circle],
+      ["diamond", "Diamond", Diamond],
+      ["triangle", "Triangle", Triangle],
+      ["line", "Line", Minus],
+    ] as const;
   return (
     <section
-      className={"notebook-sheet font-" + preferences.font}
+      className={`notebook-sheet clean-sheet font-${pref.font}`}
       aria-label="Notebook sheet"
     >
+      <textarea
+        ref={pasteTarget}
+        tabIndex={-1}
+        className="sheet-clipboard"
+        aria-label="Paste into note"
+        value=""
+        onChange={() => {}}
+        onPaste={(event) => {
+          event.preventDefault();
+          void paste(event.clipboardData.getData("text/plain")).finally(() => {
+            if (document.activeElement === pasteTarget.current) focus();
+          });
+        }}
+      />
       <div className="sheet-toolbar" role="toolbar" aria-label="Notebook tools">
         <div className="sheet-tool-group">
-          {buttons.map(([id, label, Icon]) => (
+          {tools.map(([id, label, Icon]) => (
             <button
               key={id}
               aria-label={label + " tool"}
               title={label}
               aria-pressed={tool === id}
-              onClick={() => {
-                setTool(id);
-                if (id === "write") setSelected(undefined);
-              }}
+              onClick={() => choose(id)}
             >
-              <Icon size={16} />
-              <span>{label}</span>
+              <Icon size={17} />
             </button>
           ))}
+          <div className="shape-picker">
+            <button
+              aria-label="Shapes"
+              title="Shapes"
+              aria-expanded={shapes}
+              onClick={() => setShapes(!shapes)}
+            >
+              <Square size={17} />
+              <ChevronDown size={10} />
+            </button>
+            {shapes && (
+              <div role="menu" className="shape-choices">
+                {shapeTools.map(([id, label, Icon]) => (
+                  <button key={id} role="menuitem" onClick={() => choose(id)}>
+                    <Icon size={16} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
-            title="Add image"
+            aria-label="Text tool"
+            title="Write anywhere"
+            onClick={() => choose("text")}
+          >
+            <Type size={17} />
+          </button>
+          <button
+            aria-label="Table tool"
+            title="Table"
+            onClick={() => choose("table")}
+          >
+            <Table2 size={17} />
+          </button>
+          <button
             aria-label="Add image to sheet"
+            title="Image"
             onClick={onImage}
           >
-            <ImagePlus size={16} />
+            <ImagePlus size={17} />
           </button>
         </div>
         <div className="sheet-tool-group">
           <input
-            type="color"
             aria-label="Pen color"
+            type="color"
             value={color}
             onChange={(e) => {
               setColor(e.target.value);
-              if (
-                selectedItem &&
-                ["pen", "arrow", "rectangle"].includes(selectedItem.kind)
-              )
-                update(selectedItem.id, { color: e.target.value });
+              if (selected.length)
+                commit({
+                  ...latest.current,
+                  items: latest.current.items.map((i) =>
+                    selected.includes(i.id)
+                      ? { ...i, color: e.target.value }
+                      : i,
+                  ),
+                });
             }}
           />
+          <input
+            aria-label="Pen size"
+            title="Pen size"
+            type="range"
+            min="1"
+            max="12"
+            step="0.5"
+            value={size}
+            onChange={(e) => setSize(Number(e.target.value))}
+          />
           <button
-            aria-label="Undo sheet change"
+            aria-label="Undo"
+            title="Undo (Ctrl+Z)"
             disabled={!history.current.length}
-            onClick={undo}
+            onClick={() => {
+              focus();
+              undo();
+            }}
           >
             <Undo2 size={16} />
           </button>
           <button
-            aria-label="Redo sheet change"
+            aria-label="Redo"
+            title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
             disabled={!future.current.length}
-            onClick={redo}
+            onClick={() => {
+              focus();
+              redo();
+            }}
           >
             <Redo2 size={16} />
           </button>
         </div>
       </div>
-      {tool !== "write" && (
-        <div className="sheet-tool-hint" role="status">
-          {tool === "pen"
-            ? "Draw directly on the page."
-            : tool === "select"
-              ? "Drag an object or use arrow keys. Delete removes it."
-              : tool === "text"
-                ? "Click anywhere to write."
-                : tool === "table"
-                  ? "Click to place a table."
-                  : "Drag on the page to draw."}
-          <button aria-label="Finish drawing" onClick={() => setTool("write")}>
-            <X size={13} /> Done
-          </button>
-        </div>
-      )}
-      {selectedItem && (
+      <div className="sheet-scroll">
         <div
-          className="object-toolbar"
-          role="toolbar"
-          aria-label="Selected object"
-        >
-          <span>
-            {selectedItem.kind === "drawing"
-              ? "Flowchart / drawing"
-              : selectedItem.kind === "pen"
-                ? "Drawing"
-                : selectedItem.kind.charAt(0).toUpperCase() +
-                  selectedItem.kind.slice(1)}
-          </span>
-          {selectedItem.kind === "drawing" && (
-            <button onClick={() => onDrawing(selectedItem.drawingId!)}>
-              <PenLine size={13} />
-              Edit
-            </button>
-          )}
-          <button
-            onClick={() =>
-              add({
-                kind: "text",
-                x:
-                  selectedItem.x + selectedItem.width + 24 < 720
-                    ? selectedItem.x + selectedItem.width + 24
-                    : Math.max(0, selectedItem.x - 324),
-                y: selectedItem.y,
-                width: 300,
-                height: 100,
-                text: "",
-              })
+          ref={root}
+          tabIndex={0}
+          role="group"
+          aria-label="Write and draw on this page"
+          className={`notebook-sheet-content tool-${tool}${activeGesture ? " is-gesturing" : ""}`}
+          style={{
+            minWidth: scene.width || undefined,
+            minHeight: Math.max(500, scene.height),
+          }}
+          onPointerDownCapture={(e) => {
+            if (tool !== "select") start(e);
+          }}
+          onPointerDown={(e) => {
+            if (tool === "select") start(e);
+          }}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={(e) => {
+            const g = gesture.current;
+            if (g) {
+              gesture.current = undefined;
+              preview(g.origin);
+              setActiveGesture(false);
+              setMarquee(undefined);
             }
-          >
-            <Type size={13} />
-            Write beside
-          </button>
-          <button
-            title="Duplicate"
-            aria-label="Duplicate object"
-            onClick={() =>
-              add({
-                ...selectedItem,
-                x: Math.min(1000 - selectedItem.width, selectedItem.x + 24),
-                y: selectedItem.y + 24,
-              })
+            if (root.current?.hasPointerCapture(e.pointerId))
+              root.current.releasePointerCapture(e.pointerId);
+          }}
+          onFocus={() => {
+            active.current = true;
+          }}
+          onPaste={(event) => {
+            if ((event.target as HTMLElement).closest("[contenteditable=true]"))
+              return;
+            event.preventDefault();
+            const files = [...event.clipboardData.files];
+            if (files.length && onUpload) {
+              files.forEach(onUpload);
+              return;
             }
-          >
-            <Copy size={14} />
-          </button>
-          <button
-            title="Bring to front"
-            aria-label="Bring object to front"
-            onClick={() =>
-              commit({
-                ...scene,
-                items: [
-                  ...scene.items.filter((item) => item.id !== selected),
-                  selectedItem,
-                ],
-              })
-            }
-          >
-            <Layers2 size={14} />
-          </button>
-          <button
-            title="Send to back"
-            aria-label="Send object to back"
-            onClick={() =>
-              commit({
-                ...scene,
-                items: [
-                  selectedItem,
-                  ...scene.items.filter((item) => item.id !== selected),
-                ],
-              })
-            }
-          >
-            <Layers2 size={14} style={{ transform: "rotate(180deg)" }} />
-          </button>
-          <button
-            aria-label="Delete selected object"
-            title="Delete"
-            onClick={remove}
-          >
-            <Trash2 size={14} />
-          </button>
-          <button
-            aria-label="Deselect object"
-            onClick={() => setSelected(undefined)}
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-      <div
-        ref={sheet}
-        className={"notebook-sheet-content tool-" + tool}
-        style={{
-          minHeight:
-            scene.items.length || tool !== "write"
-              ? Math.max(400, scene.height * scale)
-              : undefined,
-        }}
-        onPointerDownCapture={(event) => {
-          if (!["write", "select"].includes(tool)) start(event);
-        }}
-        onPointerDown={(event) => {
-          if (tool === "select") start(event);
-          else if (
-            tool === "write" &&
-            !(event.target as HTMLElement).closest(".sheet-object")
-          )
-            setSelected(undefined);
-        }}
-        onPointerMove={move}
-        onPointerUp={end}
-        onPointerCancel={end}
-        onDoubleClick={(event) => {
-          const target = event.target as HTMLElement;
-          if (target === event.currentTarget) {
-            const point = position(event);
-            add({
-              kind: "text",
-              x: Math.min(point[0], 680),
-              y: point[1],
-              width: 300,
-              height: 100,
-              text: "",
+            void paste(event.clipboardData.getData("text/plain"));
+          }}
+          onContextMenu={(e) => {
+            if (
+              (e.target as HTMLElement).closest(".editor-wrap") &&
+              (e.target as HTMLElement).closest(
+                ".sheet-object.kind-text,.sheet-object.kind-table,.sheet-prose",
+              )
+            )
+              return;
+            e.preventDefault();
+            e.stopPropagation();
+            focus();
+            const id = (e.target as HTMLElement).closest<HTMLElement>(
+              ".sheet-object",
+            )?.dataset.objectId;
+            if (id && !selected.includes(id)) setSelected([id]);
+            setMenu({
+              x: Math.max(8, Math.min(e.clientX, innerWidth - 250)),
+              y: Math.max(8, Math.min(e.clientY, innerHeight - 380)),
             });
-          }
-        }}
-        tabIndex={-1}
-      >
-        <div className="sheet-prose">{children}</div>
-        {scene.items.map((item, index) => {
-          const drawing = ["pen", "arrow", "rectangle"].includes(item.kind);
-          const pts = item.points || [
-            [0, 0],
-            [item.width, item.height],
-          ];
-          const first = pts[0],
-            last = pts.at(-1)!;
-          return (
-            <div
-              key={item.id}
-              data-object-id={item.id}
-              className={
-                "sheet-object kind-" +
-                item.kind +
-                (selected === item.id ? " is-selected" : "")
-              }
-              style={{
-                left: item.x / 10 + "%",
-                top: item.y * scale,
-                width: item.width / 10 + "%",
-                height: item.height * scale,
-                zIndex: index + 2,
-              }}
-              onPointerDown={(event) => {
-                if (tool !== "write" && tool !== "select") return;
-                setSelected(item.id);
-                if (
-                  (tool === "select" ||
-                    ["image", "drawing", "pen", "arrow", "rectangle"].includes(
-                      item.kind,
-                    )) &&
-                  !(event.target as HTMLElement).closest(
-                    "button,input,[contenteditable=true]",
-                  )
-                )
-                  drag(event, item, "move");
-              }}
-            >
-              {selected === item.id && (
-                <button
-                  className="object-grip"
-                  aria-label="Drag object"
-                  onPointerDown={(event) => drag(event, item, "move")}
-                >
-                  <Grip size={14} />
-                </button>
-              )}
-              {drawing ? (
-                <svg
-                  className="sheet-shape"
-                  viewBox={`0 0 ${item.width} ${item.height}`}
-                  preserveAspectRatio="none"
-                  aria-label={item.kind === "pen" ? "Hand drawing" : item.kind}
-                >
-                  <defs>
-                    <marker
-                      id={"arrow-" + item.id}
-                      markerWidth="9"
-                      markerHeight="9"
-                      refX="7"
-                      refY="4"
-                      orient="auto"
-                      markerUnits="strokeWidth"
-                    >
-                      <path
-                        d="M1 1 L7 4 L1 7"
-                        fill="none"
-                        stroke={item.color || color}
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </marker>
-                  </defs>
-                  {item.kind === "rectangle" ? (
-                    <rect
-                      x="4"
-                      y="4"
-                      width={Math.max(1, item.width - 8)}
-                      height={Math.max(1, item.height - 8)}
-                      rx="4"
-                      fill="none"
-                      stroke={item.color || color}
-                      strokeWidth="2"
-                    />
-                  ) : (
-                    <polyline
-                      points={pts.map((p) => p.join(",")).join(" ")}
-                      fill="none"
-                      stroke={item.color || color}
-                      strokeWidth={item.kind === "pen" ? 2.4 : 2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      markerEnd={
-                        item.kind === "arrow"
-                          ? `url(#arrow-${item.id})`
-                          : undefined
-                      }
-                    />
-                  )}
-                </svg>
-              ) : item.kind === "image" || item.kind === "drawing" ? (
-                <img
-                  draggable={false}
-                  src={
-                    item.kind === "drawing"
-                      ? fileUrl("drawings", item.drawingId + ".svg") +
-                        (fileUrl("drawings", item.drawingId + ".svg").includes(
-                          "?",
-                        )
-                          ? "&"
-                          : "?") +
-                        "v=" +
-                        drawingVersion
-                      : safeMedia(item.src || "")
-                  }
-                  alt={
-                    item.text ||
-                    (item.kind === "drawing"
-                      ? "Drawing or flowchart"
-                      : "Note image")
-                  }
-                  onLoad={(event) => {
-                    const image = event.currentTarget;
-                    if (
-                      !item.fitted &&
-                      !gesture.current &&
-                      image.naturalWidth
-                    ) {
-                      const ratio = image.naturalHeight / image.naturalWidth;
-                      const width = Math.min(
-                        item.width,
-                        (item.kind === "drawing" ? 220 : 200) /
-                          Math.max(0.01, ratio),
-                      );
-                      const height = Math.max(12, width * ratio);
-                      update(item.id, {
-                        width: Math.max(12, width),
-                        height,
+          }}
+        >
+          <div className="sheet-prose">{children}</div>
+          {scene.items.map((i, index) => {
+            const shape = shapeKinds.includes(i.kind);
+            return (
+              <div
+                key={i.id}
+                data-object-id={i.id}
+                className={`sheet-object kind-${i.kind}${selected.includes(i.id) ? " is-selected" : ""}${resizing && selected.includes(i.id) ? " is-resizing" : ""}`}
+                style={
+                  {
+                    "--object-height":
+                      (scene.width ? i.height : (i.height * viewWidth) / 1000) +
+                      "px",
+                    left: scene.width ? i.x : i.x / 10 + "%",
+                    top: scene.width ? i.y : (i.y * viewWidth) / 1000,
+                    width: scene.width ? i.width : i.width / 10 + "%",
+                    height: scene.width
+                      ? i.height
+                      : (i.height * viewWidth) / 1000,
+                    zIndex: index + 2,
+                  } as CSSProperties
+                }
+                onPointerDown={(e) => objectDown(e, i)}
+              >
+                {selected.includes(i.id) && !activeGesture && (
+                  <button
+                    className="object-grip"
+                    aria-label="Drag object"
+                    title="Drag"
+                    onPointerDown={(e) => begin(e, "move", selected)}
+                  >
+                    <Grip size={12} />
+                  </button>
+                )}
+                {shape ? (
+                  <SheetShape item={i} />
+                ) : i.kind === "image" || i.kind === "drawing" ? (
+                  <img
+                    draggable={false}
+                    alt={i.text || "Note drawing"}
+                    src={
+                      i.kind === "drawing"
+                        ? fileUrl("drawings", i.drawingId + ".svg") +
+                          (fileUrl("drawings", i.drawingId + ".svg").includes(
+                            "?",
+                          )
+                            ? "&"
+                            : "?") +
+                          "v=" +
+                          drawingVersion
+                        : imageSource(i.src)
+                    }
+                    onLoad={(e) => {
+                      if (i.fitted || gesture.current) return;
+                      const image = e.currentTarget;
+                      if (!image.naturalWidth) return;
+                      const ratio = image.naturalHeight / image.naturalWidth,
+                        width = Math.min(i.width, 200 / Math.max(0.01, ratio));
+                      update(i.id, {
+                        width: Math.max(8, width),
+                        height: Math.max(8, width * ratio),
                         fitted: true,
                       });
-                    }
-                  }}
-                  onDoubleClick={() =>
-                    item.kind === "drawing" && onDrawing(item.drawingId!)
-                  }
-                />
-              ) : (
-                <RichEditor
-                  ref={(handle) => {
-                    if (handle) textEditors.current.set(item.id, handle);
-                    else textEditors.current.delete(item.id);
-                  }}
-                  compact
-                  value={item.text || ""}
-                  onChange={(text) => update(item.id, { text })}
-                  onCommand={onCommand || (() => {})}
-                  onUpload={onUpload}
-                  onReady={(editor) => {
-                    const measure = () => {
-                      const needed = Math.ceil(
-                        editor.view.dom.scrollHeight / Math.max(0.2, scale) +
-                          36,
-                      );
-                      const saved = latest.current.items.find(
-                        (entry) => entry.id === item.id,
-                      );
-                      if (saved && needed > saved.height + 3)
-                        update(item.id, { height: needed });
-                    };
-                    editor.on("update", measure);
-                  }}
-                />
-              )}
-              {selected === item.id && (
-                <button
-                  className="object-resize"
-                  aria-label="Resize object"
-                  onPointerDown={(event) => drag(event, item, "resize")}
-                />
-              )}
-            </div>
-          );
-        })}
+                    }}
+                  />
+                ) : (
+                  <RichEditor
+                    ref={(handle) => {
+                      if (handle) editors.current.set(i.id, handle);
+                      else editors.current.delete(i.id);
+                    }}
+                    compact
+                    value={i.text || ""}
+                    onChange={(text) => update(i.id, { text })}
+                    onCommand={onCommand || (() => {})}
+                    onUpload={onUpload}
+                    onObjectAction={(action) => {
+                      if (action === "resize") {
+                        setSelected([i.id]);
+                        setResizing(true);
+                      } else if (action === "delete") remove([i.id]);
+                      else
+                        add({
+                          ...structuredClone(i),
+                          x: i.x + 20,
+                          y: i.y + 20,
+                        });
+                    }}
+                    onReady={(editor) => {
+                      editor.on("focus", () => {
+                        setSelected([i.id]);
+                        active.current = true;
+                      });
+                      if (i.kind === "text")
+                        editor.on("update", () => {
+                          const needed = editor.view.dom.scrollHeight,
+                            saved = latest.current.items.find(
+                              (item) => item.id === i.id,
+                            );
+                          if (saved && needed > saved.height + 2)
+                            update(i.id, { height: needed });
+                        });
+                    }}
+                  />
+                )}
+                {resizing && selected.includes(i.id) && !activeGesture && (
+                  <button
+                    className="object-resize"
+                    aria-label="Resize object"
+                    onPointerDown={(e) => begin(e, "resize", [i.id])}
+                  />
+                )}
+              </div>
+            );
+          })}
+          {marquee && (
+            <div
+              className="selection-marquee"
+              style={{
+                left: marquee.x,
+                top: marquee.y,
+                width: marquee.width,
+                height: marquee.height,
+              }}
+            />
+          )}
+        </div>
       </div>
-      {(scene.items.length > 0 || tool !== "write") && (
-        <button
-          className="extend-sheet"
-          onClick={() => commit({ ...scene, height: scene.height + 300 })}
+      <button
+        className="extend-sheet"
+        aria-label="Add more paper"
+        onClick={() =>
+          commit({ ...base(), height: latest.current.height + 400 })
+        }
+      >
+        More paper
+      </button>
+      {menu && (
+        <div
+          className="sheet-context context-menu"
+          role="menu"
+          aria-label="Page actions"
+          style={{ left: menu.x, top: menu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
         >
-          <Plus size={14} /> More paper
-        </button>
+          {item?.kind === "drawing" && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenu(undefined);
+                onDrawing(item.drawingId!);
+              }}
+            >
+              Edit drawing
+            </button>
+          )}
+          {selected.length > 0 && (
+            <>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  void copy();
+                  setMenu(undefined);
+                }}
+              >
+                Copy selection <small>Ctrl+C</small>
+              </button>
+              <button role="menuitem" onClick={duplicate}>
+                Duplicate <small>Ctrl+D</small>
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setResizing(true);
+                  setMenu(undefined);
+                }}
+              >
+                Resize
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const next = latest.current;
+                  commit({
+                    ...next,
+                    items: [
+                      ...next.items.filter((i) => !selected.includes(i.id)),
+                      ...selectedItems,
+                    ],
+                  });
+                  setMenu(undefined);
+                }}
+              >
+                Bring forward
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const next = latest.current;
+                  commit({
+                    ...next,
+                    items: [
+                      ...selectedItems,
+                      ...next.items.filter((i) => !selected.includes(i.id)),
+                    ],
+                  });
+                  setMenu(undefined);
+                }}
+              >
+                Send backward
+              </button>
+              <button role="menuitem" onClick={() => remove()}>
+                Delete selection <small>Delete</small>
+              </button>
+            </>
+          )}
+          <button
+            role="menuitem"
+            onClick={() => {
+              fullSelection.current = true;
+              setSelected(scene.items.map((i) => i.id));
+              setTool("select");
+              setMenu(undefined);
+              focus();
+            }}
+          >
+            Select entire note <small>Ctrl+A</small>
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              perform("paste", new Event("command", { cancelable: true }));
+              setMenu(undefined);
+            }}
+          >
+            Paste objects <small>Ctrl+V</small>
+          </button>
+          <button role="menuitem" onClick={() => choose("text")}>
+            Write here
+          </button>
+          <button role="menuitem" onClick={() => choose("pen")}>
+            Pen
+          </button>
+          <button role="menuitem" onClick={() => choose("eraser")}>
+            Eraser
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              onCommand?.("flowchart");
+              setMenu(undefined);
+            }}
+          >
+            Make flowchart
+          </button>
+          <button
+            role="menuitem"
+            disabled={!history.current.length}
+            onClick={() => {
+              undo();
+              setMenu(undefined);
+            }}
+          >
+            Undo <small>Ctrl+Z</small>
+          </button>
+          <button
+            role="menuitem"
+            disabled={!future.current.length}
+            onClick={() => {
+              redo();
+              setMenu(undefined);
+            }}
+          >
+            Redo <small>Ctrl+Shift+Z</small>
+          </button>
+        </div>
       )}
     </section>
   );

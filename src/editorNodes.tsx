@@ -120,7 +120,7 @@ export const VariantOption = Node.create({
     ];
   },
   renderMarkdown(node, h) {
-    return `:::option ${JSON.stringify({ label: node.attrs?.label || "" })}\n\n${h.renderChildren(node.content || [])}\n\n:::endoption`;
+    return `:::option ${JSON.stringify({ label: node.attrs?.label || "" })}\n\n${h.renderChildren(node.content || [], "\n\n")}\n\n:::endoption`;
   },
   addNodeView() {
     return ReactNodeViewRenderer(VariantOptionView);

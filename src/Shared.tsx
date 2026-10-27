@@ -41,6 +41,14 @@ export default function Shared({ token }: { token: string }) {
         Opening shared note...
       </div>
     );
+  const reading = () =>
+    data.note.canvas?.items.length > 0 ? (
+      <CanvasRead canvas={data.note.canvas} share={token}>
+        <MD text={body} share={token} />
+      </CanvasRead>
+    ) : (
+      <MD text={body} share={token} />
+    );
   return (
     <div className="share-shell">
       <header>
@@ -68,11 +76,11 @@ export default function Shared({ token }: { token: string }) {
               </label>
               <details>
                 <summary>Preview</summary>
-                <MD text={body} share={token} />
+                {reading()}
               </details>
             </>
           ) : (
-            <MD text={body} share={token} />
+            reading()
           )}
         </section>
       ) : (
@@ -126,7 +134,9 @@ export default function Shared({ token }: { token: string }) {
           Save shared note
         </button>
       )}
-      {data.note.canvas?.items.length > 0 && <CanvasRead canvas={data.note.canvas} share={token}/>}
+      {data.note.body === undefined && data.note.canvas?.items.length > 0 && (
+        <CanvasRead canvas={data.note.canvas} share={token} />
+      )}
       {data.note.body === undefined && data.note.drawings.length > 0 && (
         <section>
           <h3>Sketches and flows</h3>

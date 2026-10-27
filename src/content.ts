@@ -3,6 +3,23 @@ export interface VariantText {
   label: string;
   body: string;
 }
+// Repair the old missing block separators without stripping literal fenced examples.
+export function repairNotebookMarkup(source: string) {
+  let fence = "";
+  return source.replace(/\r\n/g, "\n").split("\n").map(line => {
+    const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+    if (match) {
+      if (!fence) fence = match[1];
+      else if (match[1][0] === fence[0] && match[1].length >= fence.length) {
+        fence = "";
+        if (match[2].trim() && /:::drawing\s+\{/.test(match[2]))
+          line = match[1] + "\n\n" + match[2].trim();
+      }
+    }
+    if (!fence) line = line.replace(/([^\n])(:::(?:drawing)\s+\{[^\n]*?\}\s*:::)/g, "$1\n\n$2");
+    return line;
+  }).join("\n");
+}
 export function variantsMarkdown(options: VariantText[]) {
   return `:::variants\n\n${options.map((o) => `:::option ${JSON.stringify({ label: o.label })}\n\n${o.body}\n\n:::endoption`).join("\n\n")}\n\n:::endvariants`;
 }
@@ -73,7 +90,7 @@ export function drawingMarkdown(id: string, width?: number) {
   return `:::drawing ${JSON.stringify({ id, ...(width ? { width } : {}) })} :::`;
 }
 export function bodyOf(note: Note) {
-  if (note.body !== undefined) return note.body;
+  if (note.body !== undefined) return repairNotebookMarkup(note.body);
   let body: string | undefined = note.body;
   if (body === undefined) {
     const options = [

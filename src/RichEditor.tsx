@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { createPortal } from "react-dom";
 import type { Editor as CoreEditor, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
@@ -42,9 +43,11 @@ import { mediaUrl } from "./api";
 import { usePreferences, keyCombination } from "./preferences";
 import { MediaImage } from "./editorMedia";
 import { copyText } from "./clipboard";
+import { repairNotebookMarkup } from "./content";
 const editorDisplay = (text: string) =>
-  displayMarkdown(text).replace(/\/files\/attachments\/[^\s)]+/g, (url) =>
-    mediaUrl(url),
+  displayMarkdown(repairNotebookMarkup(text)).replace(
+    /\/files\/attachments\/[^\s)]+/g,
+    (url) => mediaUrl(url),
   );
 import {
   VariantGroup,
@@ -93,6 +96,8 @@ const NotebookImage = Image.extend({
   },
 });
 const commandInfo = [
+  ["undo", "Undo", Undo2],
+  ["redo", "Redo", Redo2],
   ["text", "Normal text", Type],
   ["h1", "Large heading", Heading2],
   ["h2", "Heading", Heading2],
@@ -129,6 +134,7 @@ const Editor = forwardRef<
     readOnly?: boolean;
     onReady?: (e: CoreEditor) => void;
     compact?: boolean;
+    onObjectAction?: (command: "resize" | "delete" | "duplicate") => void;
     onPlace?: (
       kind: "image" | "drawing" | "table" | "text",
       src: string,
@@ -144,6 +150,7 @@ const Editor = forwardRef<
     readOnly = false,
     onReady,
     compact = false,
+    onObjectAction,
     onPlace,
   },
   forwarded,
@@ -163,6 +170,7 @@ const Editor = forwardRef<
   currentValue.current = value;
   const [raw, setRaw] = useState(false);
   const [context, setContext] = useState<{ x: number; y: number }>();
+  const [mediaTarget, setMediaTarget] = useState<HTMLElement>();
   const [slash, setSlash] = useState<{
     from: number;
     to: number;
@@ -274,6 +282,37 @@ const Editor = forwardRef<
         role: "textbox",
       },
       handleKeyDown: (_view, event) => {
+        const assigned = Object.entries(preferencesRef.current.shortcuts).find(
+          ([, shortcut]) => shortcut && shortcut === keyCombination(event),
+        )?.[0];
+        if (
+          assigned &&
+          ["copy", "cut", "paste", "select-all"].includes(assigned) &&
+          (event.ctrlKey || event.metaKey || event.altKey) &&
+          !(
+            (event.ctrlKey || event.metaKey) &&
+            !event.altKey &&
+            ["c", "x", "v", "a"].includes(event.key.toLowerCase())
+          )
+        ) {
+          event.preventDefault();
+          window.dispatchEvent(
+            new CustomEvent("synapse:action", {
+              detail: assigned,
+              cancelable: true,
+            }),
+          );
+          return true;
+        }
+        if (
+          assigned &&
+          (event.ctrlKey || event.metaKey || event.altKey) &&
+          commandInfo.some((info) => info[0] === assigned)
+        ) {
+          event.preventDefault();
+          doRef.current(assigned);
+          return true;
+        }
         const shade = Object.entries(preferencesRef.current.shortcuts).find(
           ([key, shortcut]) =>
             pastelNames.includes(key as any) &&
@@ -362,6 +401,40 @@ const Editor = forwardRef<
   }, [value, editor]);
   useEffect(() => {
     editor?.setEditable(!readOnly, false);
+  }, [editor, readOnly]);
+  useEffect(() => {
+    if (!editor || readOnly) return;
+    const action = (event: Event) => {
+      if (event.defaultPrevented || !editor.view.hasFocus()) return;
+      const cmd = (event as CustomEvent).detail;
+      if (cmd === "undo" || cmd === "redo") {
+        event.preventDefault();
+        if (cmd === "undo") editor.commands.undo();
+        else editor.commands.redo();
+      } else if (cmd === "select-all") {
+        event.preventDefault();
+        editor.commands.selectAll();
+      } else if (cmd === "copy" || cmd === "cut") {
+        event.preventDefault();
+        const selection = editor.state.selection;
+        void copyText(
+          editor.state.doc.textBetween(selection.from, selection.to, "\n"),
+        ).then(() => {
+          if (cmd === "cut") editor.commands.deleteRange(selection);
+        });
+      } else if (cmd === "paste") {
+        event.preventDefault();
+        void navigator.clipboard
+          .readText()
+          .then((text) => editor.commands.insertContent({ type: "text", text }))
+          .catch(() => {});
+      } else if (commandInfo.some((info) => info[0] === cmd)) {
+        event.preventDefault();
+        run(cmd);
+      }
+    };
+    window.addEventListener("synapse:action", action);
+    return () => window.removeEventListener("synapse:action", action);
   }, [editor, readOnly]);
   useEffect(() => {
     if (!editor || !onPlace) return;
@@ -473,7 +546,9 @@ const Editor = forwardRef<
     } else restore();
     capture();
     const c = editor.chain().focus();
-    if (cmd === "bold") c.toggleBold().run();
+    if (cmd === "undo") c.undo().run();
+    else if (cmd === "redo") c.redo().run();
+    else if (cmd === "bold") c.toggleBold().run();
     else if (cmd === "italic") c.toggleItalic().run();
     else if (cmd === "underline") c.toggleUnderline().run();
     else if (cmd === "bullet") c.toggleBulletList().run();
@@ -660,7 +735,12 @@ const Editor = forwardRef<
       onContextMenu={(e) => {
         if (readOnly) return;
         e.preventDefault();
-        if (editor.state.selection.empty) {
+        e.stopPropagation();
+        const media = (e.target as HTMLElement).closest<HTMLElement>(
+          ".inline-drawing,.notebook-image",
+        );
+        setMediaTarget(media || undefined);
+        if (!media && editor.state.selection.empty) {
           const pos = editor.view.posAtCoords({
             left: e.clientX,
             top: e.clientY,
@@ -877,145 +957,270 @@ const Editor = forwardRef<
           )}
         </div>
       )}
-      {slash && filtered.length > 0 && (
-        <div
-          className="slash-menu"
-          style={{ left: slash.x, top: slash.y }}
-          role="menu"
-          aria-label="Slash commands"
-        >
-          {filtered.map(([cmd, label, Icon], i) => (
-            <button
-              className={i === active ? "active" : ""}
-              role="menuitem"
-              key={cmd}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => run(cmd)}
-            >
-              <Icon size={15} />
-              <span>/{cmd}</span>
-              <small>{label}</small>
-            </button>
-          ))}
-        </div>
-      )}
-      {context && (
-        <div
-          role="menu"
-          aria-label="Edit selected content"
-          className="context-menu"
-          style={{ left: Math.max(8, context.x), top: Math.max(8, context.y) }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onWheel={(e) => e.stopPropagation()}
-        >
-          <div className="context-format">
-            {inlineButtons.slice(0, 8).map(([cmd, label, Icon]) => (
+      {slash &&
+        filtered.length > 0 &&
+        createPortal(
+          <div
+            className="slash-menu"
+            style={{ left: slash.x, top: slash.y }}
+            role="menu"
+            aria-label="Slash commands"
+          >
+            {filtered.map(([cmd, label, Icon], i) => (
               <button
-                key={cmd}
+                className={i === active ? "active" : ""}
                 role="menuitem"
-                aria-label={label}
-                title={label}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => run(cmd)}
-              >
-                <Icon size={16} />
-              </button>
-            ))}
-          </div>
-          <div className="context-clipboard">
-            <button
-              role="menuitem"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={async () => {
-                await copyText(
-                  editor.state.doc.textBetween(
-                    editor.state.selection.from,
-                    editor.state.selection.to,
-                    "\n",
-                  ),
-                );
-                setContext(undefined);
-              }}
-            >
-              Copy <small>Ctrl+C</small>
-            </button>
-            <button
-              role="menuitem"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={async () => {
-                try {
-                  const text = await navigator.clipboard.readText();
-                  restore();
-                  editor.commands.insertContentAt(
-                    editor.state.selection,
-                    editor.isActive("codeBlock")
-                      ? { type: "text", text }
-                      : text.replace(/</g, "&lt;"),
-                  );
-                  setContext(undefined);
-                } catch {
-                  restore();
-                  setContext(undefined);
-                }
-              }}
-            >
-              Paste <small>Ctrl+V</small>
-            </button>
-          </div>
-          <div className="context-colors">
-            {pastelNames.map((shade) => (
-              <button
-                key={shade}
-                data-pastel={shade}
-                title={shade}
-                aria-label={"Text color " + shade}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  restore();
-                  editor.chain().focus().setMark("pastel", { shade }).run();
-                  setContext(undefined);
-                }}
-              >
-                Aa
-              </button>
-            ))}
-          </div>
-          {commandInfo
-            .filter(([key]) =>
-              [
-                "variant",
-                "link",
-                "page",
-                "code",
-                "inline-code",
-                "table",
-                "image",
-                "file",
-                "draw",
-                "flowchart",
-                "diagram",
-                "todo",
-                "numbered",
-                "bullet",
-                "quote",
-                "divider",
-                ...(onPlace ? ["float"] : []),
-              ].includes(key),
-            )
-            .map(([cmd, label, Icon]) => (
-              <button
                 key={cmd}
-                role="menuitem"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => run(cmd)}
               >
                 <Icon size={15} />
-                {label}
-                <small>/{cmd}</small>
+                <span>/{cmd}</span>
+                <small>{label}</small>
               </button>
             ))}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
+      {context &&
+        createPortal(
+          <div
+            role="menu"
+            aria-label="Edit selected content"
+            className={"context-menu" + (mediaTarget ? " is-media" : "")}
+            style={{
+              left: Math.max(8, context.x),
+              top: Math.max(8, context.y),
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            {mediaTarget && (
+              <div className="context-media-actions">
+                {[
+                  ...mediaTarget.querySelectorAll<HTMLButtonElement>(
+                    ".drawing-tools button,.media-controls button",
+                  ),
+                ].map((button, index) => (
+                  <button
+                    role="menuitem"
+                    key={index}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      button.click();
+                      setContext(undefined);
+                    }}
+                  >
+                    {button.textContent}
+                  </button>
+                ))}
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    mediaTarget.dataset.inlineResize = "true";
+                    setContext(undefined);
+                  }}
+                >
+                  Resize
+                </button>
+              </div>
+            )}
+            <div className="context-format">
+              {inlineButtons.slice(0, 8).map(([cmd, label, Icon]) => (
+                <button
+                  key={cmd}
+                  role="menuitem"
+                  aria-label={label}
+                  title={label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => run(cmd)}
+                >
+                  <Icon size={16} />
+                </button>
+              ))}
+            </div>
+            <div className="context-table-actions">
+              {onPlace && table && (
+                <button
+                  role="menuitem"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    const selection = editor.state.selection.$from;
+                    for (let depth = selection.depth; depth > 0; depth--) {
+                      const node = selection.node(depth);
+                      if (node.type.name !== "table") continue;
+                      const from = selection.before(depth),
+                        text = editor.markdown!.serialize({
+                          type: "doc",
+                          content: [node.toJSON()],
+                        });
+                      editor.commands.deleteRange({
+                        from,
+                        to: from + node.nodeSize,
+                      });
+                      onPlace("table", text);
+                      break;
+                    }
+                    setContext(undefined);
+                  }}
+                >
+                  Move table freely
+                </button>
+              )}
+              {onObjectAction &&
+                (["resize", "duplicate", "delete"] as const).map((command) => (
+                  <button
+                    role="menuitem"
+                    key={command}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onObjectAction(command);
+                      setContext(undefined);
+                    }}
+                  >
+                    {command.charAt(0).toUpperCase() + command.slice(1)} object
+                  </button>
+                ))}
+              {table &&
+                (
+                  [
+                    ["Row above", "addRowBefore"],
+                    ["Row below", "addRowAfter"],
+                    ["Column left", "addColumnBefore"],
+                    ["Column right", "addColumnAfter"],
+                    ["Delete row", "deleteRow"],
+                    ["Delete column", "deleteColumn"],
+                    ["Delete table", "deleteTable"],
+                  ] as const
+                ).map(([label, cmd]) => (
+                  <button
+                    role="menuitem"
+                    key={cmd}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      editor.chain().focus()[cmd]().run();
+                      setContext(undefined);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              <button
+                role="menuitem"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  editor.commands.undo();
+                  setContext(undefined);
+                }}
+              >
+                Undo <small>Ctrl+Z</small>
+              </button>
+              <button
+                role="menuitem"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  editor.commands.redo();
+                  setContext(undefined);
+                }}
+              >
+                Redo <small>Ctrl+Shift+Z</small>
+              </button>
+            </div>
+            <div className="context-clipboard">
+              <button
+                role="menuitem"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={async () => {
+                  await copyText(
+                    editor.state.doc.textBetween(
+                      editor.state.selection.from,
+                      editor.state.selection.to,
+                      "\n",
+                    ),
+                  );
+                  setContext(undefined);
+                }}
+              >
+                Copy <small>Ctrl+C</small>
+              </button>
+              <button
+                role="menuitem"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    restore();
+                    editor.commands.insertContentAt(
+                      editor.state.selection,
+                      editor.isActive("codeBlock")
+                        ? { type: "text", text }
+                        : text.replace(/</g, "&lt;"),
+                    );
+                    setContext(undefined);
+                  } catch {
+                    restore();
+                    setContext(undefined);
+                  }
+                }}
+              >
+                Paste <small>Ctrl+V</small>
+              </button>
+            </div>
+            <div className="context-colors">
+              {pastelNames.map((shade) => (
+                <button
+                  key={shade}
+                  data-pastel={shade}
+                  title={shade}
+                  aria-label={"Text color " + shade}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    restore();
+                    editor.chain().focus().setMark("pastel", { shade }).run();
+                    setContext(undefined);
+                  }}
+                >
+                  Aa
+                </button>
+              ))}
+            </div>
+            {commandInfo
+              .filter(([key]) =>
+                [
+                  "variant",
+                  "link",
+                  "page",
+                  "code",
+                  "inline-code",
+                  "table",
+                  "image",
+                  "file",
+                  "draw",
+                  "flowchart",
+                  "diagram",
+                  "todo",
+                  "numbered",
+                  "bullet",
+                  "quote",
+                  "divider",
+                  ...(onPlace ? ["float"] : []),
+                ].includes(key),
+              )
+              .map(([cmd, label, Icon]) => (
+                <button
+                  key={cmd}
+                  role="menuitem"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => run(cmd)}
+                >
+                  <Icon size={15} />
+                  {label}
+                  <small>/{cmd}</small>
+                </button>
+              ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 });

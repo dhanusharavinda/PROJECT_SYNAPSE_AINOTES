@@ -17,6 +17,7 @@ import {
   variantsMarkdown,
   drawingMarkdown,
 } from "../src/content";
+import { repairNotebookMarkup } from "../src/content";
 import { storageMarkdown } from "../src/markdown";
 import NoteView from "../src/NoteView";
 import type { Bootstrap, Note } from "../src/types";
@@ -226,6 +227,35 @@ it("round-trips variants, pastel marks, tasks, code and image width in Markdown"
     true,
   );
   expect(screen.getByRole("button", { name: "Copy code" })).toBeTruthy();
+});
+it("keeps code, paragraphs and drawings separate inside variants when saved and shared", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const value = variantsMarkdown([
+    {
+      label: "Implementation",
+      body:
+        "```python\nquery = model.encode(text)\n```\n\nUse compatible encoders.\n\n" +
+        drawingMarkdown(id),
+    },
+  ]);
+  const { core } = await notebook(value),
+    saved = core.getMarkdown();
+  expect(saved).toContain("```\n\nUse compatible encoders.\n\n:::drawing");
+  const parsed = parseVariants(saved);
+  expect(parsed?.options).toHaveLength(1);
+  const broken = value.replace(
+    "```\n\nUse compatible encoders.\n\n:::drawing",
+    "```Use compatible encoders.:::drawing",
+  );
+  const view = render(<MD text={broken} />);
+  expect(view.container.textContent).not.toContain(":::variants");
+  expect(view.container.textContent).not.toContain(":::option");
+  expect(view.container.querySelector("img")?.getAttribute("src")).toContain(
+    id,
+  );
+  const literal =
+    '```text\n:::variants\n:::option {"label":"Example"}\n:::endoption\n:::endvariants\n```';
+  expect(repairNotebookMarkup(literal)).toBe(literal);
 });
 it("inserts a transparent drawing between paragraphs without deleting selected writing", async () => {
   const { core, handle } = await notebook();

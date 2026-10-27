@@ -1,122 +1,97 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { NoteCanvas } from "./types";
 import { fileUrl } from "./api";
 import { MD } from "./ui";
-
+import SheetShape from "./SheetShape";
 export default function CanvasRead({
   canvas,
   share,
+  children,
 }: {
   canvas: NoteCanvas;
   share?: string;
+  children?: ReactNode;
 }) {
-  const root = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const root = useRef<HTMLDivElement>(null),
+    page = useRef<HTMLDivElement>(null),
+    [scale, setScale] = useState(1),
+    [height, setHeight] = useState(canvas.height),
+    width = canvas.width || 1000;
   useEffect(() => {
     if (!root.current) return;
-    const observer = new ResizeObserver(() =>
-      setScale((root.current?.clientWidth || 1000) / 1000),
-    );
+    const measure = () => {
+        setScale((root.current?.clientWidth || width) / width);
+        setHeight(Math.max(canvas.height, page.current?.scrollHeight || 0));
+      },
+      observer = new ResizeObserver(measure);
     observer.observe(root.current);
+    const prose = page.current?.querySelector(".reading-prose");
+    if (prose) observer.observe(prose);
+    measure();
     return () => observer.disconnect();
-  }, []);
+  }, [width, canvas.height, children]);
   return (
     <div
       ref={root}
       className="reading-sheet"
-      style={{ position: "relative", minHeight: canvas.height * scale }}
+      style={{ position: "relative", minHeight: height * scale }}
       aria-label="Note drawings and placed text"
     >
-      {canvas.items.map((item) => (
-        <div
-          key={item.id}
-          style={{
-            position: "absolute",
-            left: item.x / 10 + "%",
-            top: item.y * scale,
-            width: item.width / 10 + "%",
-            minHeight: item.height * scale,
-          }}
-        >
-          {item.kind === "text" || item.kind === "table" ? (
-            <MD text={item.text || ""} share={share} />
-          ) : item.kind === "image" || item.kind === "drawing" ? (
-            (() => {
-              const attachment = item.src?.match(
-                /^(?:\.\.\/|\/files\/)(attachments|drawings)\/([-a-zA-Z0-9]+\.[a-zA-Z0-9]+)$/,
-              );
-              const src =
-                item.kind === "drawing"
-                  ? fileUrl("drawings", item.drawingId + ".svg", share)
-                  : attachment
-                    ? fileUrl(attachment[1], attachment[2], share)
-                    : "";
-              return (
+      <div
+        ref={page}
+        className="reading-page"
+        style={{
+          position: "absolute",
+          width,
+          height: canvas.height,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      >
+        {children && <div className="reading-prose">{children}</div>}
+        {canvas.items.map((item) => {
+          const attachment = item.src?.match(
+              /^(?:\.\.\/|\/files\/)(attachments|drawings)\/([-a-zA-Z0-9]+\.[a-zA-Z0-9]+)$/,
+            ),
+            src =
+              item.kind === "drawing"
+                ? fileUrl("drawings", item.drawingId + ".svg", share)
+                : attachment
+                  ? fileUrl(attachment[1], attachment[2], share)
+                  : "";
+          return (
+            <div
+              key={item.id}
+              className={"reading-object kind-" + item.kind}
+              style={{
+                position: "absolute",
+                left: item.x,
+                top: item.y,
+                width: item.width,
+                height: item.height,
+                transformOrigin: "top left",
+              }}
+            >
+              {item.kind === "text" || item.kind === "table" ? (
+                <MD text={item.text || ""} share={share} />
+              ) : item.kind === "image" || item.kind === "drawing" ? (
                 <img
                   src={src}
                   alt={item.text || "Note drawing"}
-                  style={{ width: "100%", display: "block" }}
-                />
-              );
-            })()
-          ) : (
-            <svg
-              viewBox={`0 0 ${item.width} ${item.height}`}
-              style={{
-                width: "100%",
-                height: item.height * scale,
-                display: "block",
-                overflow: "visible",
-              }}
-            >
-              <defs>
-                <marker
-                  id={"read-arrow-" + item.id}
-                  markerWidth="8"
-                  markerHeight="8"
-                  refX="7"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path
-                    d="M1 1 L7 4 L1 7"
-                    fill="none"
-                    stroke={item.color || "#24392f"}
-                  />
-                </marker>
-              </defs>
-              {item.kind === "rectangle" ? (
-                <rect
-                  x="4"
-                  y="4"
-                  width={Math.max(1, item.width - 8)}
-                  height={Math.max(1, item.height - 8)}
-                  rx="4"
-                  fill="none"
-                  stroke={item.color || "#24392f"}
-                  strokeWidth="2"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    display: "block",
+                  }}
                 />
               ) : (
-                <polyline
-                  points={item.points
-                    ?.map((point) => point.join(","))
-                    .join(" ")}
-                  fill="none"
-                  stroke={item.color || "#24392f"}
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  markerEnd={
-                    item.kind === "arrow"
-                      ? `url(#read-arrow-${item.id})`
-                      : undefined
-                  }
-                />
+                <SheetShape item={item} />
               )}
-            </svg>
-          )}
-        </div>
-      ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

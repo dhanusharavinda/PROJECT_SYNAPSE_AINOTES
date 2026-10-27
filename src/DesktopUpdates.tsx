@@ -3,6 +3,10 @@ import { Download, RefreshCw, X } from "lucide-react";
 import type { UpdateBridge, UpdateState } from "../desktop/updates";
 declare global {
   interface Window {
+    synapseEditing?: {
+      native: (command: string) => void;
+      subscribe: (listener: (command: string) => void) => () => void;
+    };
     synapseUpdates?: UpdateBridge;
   }
 }

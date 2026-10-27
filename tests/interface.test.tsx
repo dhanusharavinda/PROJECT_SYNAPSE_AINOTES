@@ -77,6 +77,8 @@ afterEach(() => {
 describe("student-facing regression checks", () => {
   it("opens a note without a false dirty state, then navigates to the graph", async () => {
     render(<App />);
+    await screen.findByRole("heading", {name:"All notes"});
+    fireEvent.click(screen.getByText("Embeddings", {selector:".library-note strong"}));
     await screen.findByRole("textbox", { name: "Note explanation" });
     expect(screen.queryByText("Unsaved changes")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Knowledge Graph" }));

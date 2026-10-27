@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import { parseVariants } from "./content";
+import { parseVariants, repairNotebookMarkup } from "./content";
 import { fileUrl, mediaUrl } from "./api";
 import { copyText } from "./clipboard";
 export function Modal({
@@ -177,6 +177,7 @@ export function MD({
   share?: string;
   depth?: number;
 }) {
+  text = repairNotebookMarkup(text);
   if (depth > 12) return <MarkdownText text={text} share={share} />;
   const blocks: any[] = [];
   const matcher = /^:::variants\s*$|^:::drawing (\{[^\n]*\}) :::\s*$/gm;

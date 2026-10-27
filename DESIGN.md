@@ -250,6 +250,12 @@ Connections are sentences separated by fine top rules, with muted supporting rea
 
 ## Do's and Don'ts
 
+### Notebook 1.2 interaction refinement
+
+The sheet keeps one compact row of drawing icons. Text formatting, table operations, stacking, duplication, deletion, and resize actions belong in right-click menus. A selected object shows a small grip; resize handles appear only after choosing Resize. No selection toolbar may add height above the sheet during a gesture. Context menus render at document level so overlapping objects cannot cover them. Paper uses a 32px writing rhythm and measures the active writing font's baseline for the ruling.
+
+All notes uses flat, left-aligned rows: 16px titles, 13px secondary details, a 32px desktop title and 24px narrow title. Search, group, sort, dates, and checkboxes serve organization directly. The single theme button cycles Light, Dark, and Paper. Preserve the existing sage/ink palette and Inter/Lora pairing. Blank notebook space is writable paper, rather than a decorative empty panel.
+
 ### Do:
 
 - **Do** preserve the confirmed sage and ink identity and Inter/Lora pairing.

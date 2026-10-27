@@ -36,6 +36,7 @@ export default function Settings({
   const [archived, setArchived] = useState<Note[]>([]);
   const [trashed, setTrashed] = useState<Note[]>([]);
   const preferences = usePreferences();
+  const [shortcutQuery, setShortcutQuery] = useState("");
   const [pairOrigin, setPairOrigin] = useState("");
   const [pairing, setPairing] = useState<{
     origin: string;
@@ -97,38 +98,83 @@ export default function Settings({
             Make room for your next idea.
           </p>
           <p className="small muted">
-            Click a shortcut, then press your new keys. Alt + a number keeps
-            ordinary typing available.
+            Choose a feature and press your keys. Backspace clears a shortcut.
+            Single keys work outside writing. Use Ctrl or Alt while typing.
           </p>
           <div className="shortcut-list">
-            {Object.keys(shortcutDefaults).map((key) => (
-              <label key={key}>
-                {shortcutLabels[key]}
-                <input
-                  aria-label={shortcutLabels[key] + " shortcut"}
-                  readOnly
-                  value={preferences.shortcuts[key]}
-                  onKeyDown={(e) => {
-                    if (e.key === "Tab") return;
-                    e.preventDefault();
-                    const shortcut = keyCombination(e);
-                    if (!shortcut) return;
-                    if (
-                      Object.entries(preferences.shortcuts).some(
-                        ([id, value]) => id !== key && value === shortcut,
-                      )
-                    ) {
-                      notify("That shortcut is already used. Choose another.");
-                      return;
-                    }
-                    savePreferences({
-                      ...preferences,
-                      shortcuts: { ...preferences.shortcuts, [key]: shortcut },
-                    });
-                  }}
-                />
-              </label>
-            ))}
+            <input
+              aria-label="Find shortcut feature"
+              placeholder="Find a feature"
+              value={shortcutQuery}
+              onChange={(e) => setShortcutQuery(e.target.value)}
+            />
+            {Object.keys(shortcutDefaults)
+              .filter((key) =>
+                shortcutLabels[key]
+                  .toLowerCase()
+                  .includes(shortcutQuery.toLowerCase()),
+              )
+              .map((key) => (
+                <label key={key}>
+                  {shortcutLabels[key]}
+                  <input
+                    aria-label={shortcutLabels[key] + " shortcut"}
+                    readOnly
+                    value={preferences.shortcuts[key] || ""}
+                    placeholder="Assign keys"
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (["Backspace", "Delete"].includes(e.key)) {
+                        savePreferences({
+                          ...preferences,
+                          shortcuts: { ...preferences.shortcuts, [key]: "" },
+                        });
+                        return;
+                      }
+                      const shortcut = keyCombination(e);
+                      if (!shortcut) return;
+                      const reserved = Object.entries(shortcutDefaults).find(
+                        ([id, value]) =>
+                          [
+                            "undo",
+                            "redo",
+                            "copy",
+                            "cut",
+                            "paste",
+                            "select-all",
+                          ].includes(id) &&
+                          value === shortcut &&
+                          id !== key,
+                      );
+                      if (reserved) {
+                        notify(
+                          "That key keeps its usual editing action. Choose another key.",
+                        );
+                        return;
+                      }
+                      if (
+                        Object.entries(preferences.shortcuts).some(
+                          ([id, value]) => id !== key && value === shortcut,
+                        )
+                      ) {
+                        notify(
+                          "That shortcut is already used. Choose another.",
+                        );
+                        return;
+                      }
+                      savePreferences({
+                        ...preferences,
+                        shortcuts: {
+                          ...preferences.shortcuts,
+                          [key]: shortcut,
+                        },
+                      });
+                    }}
+                  />
+                </label>
+              ))}
           </div>
           <button
             onClick={() =>

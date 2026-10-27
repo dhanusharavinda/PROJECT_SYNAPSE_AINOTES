@@ -32,8 +32,12 @@ import Settings from "./Settings";
 import Shared from "./Shared";
 import BrandMark from "./BrandMark";
 import DesktopUpdates from "./DesktopUpdates";
-type View = "notes" | "graph" | "inbox" | "review" | "audio" | "settings";
+import NotesLibrary from "./NotesLibrary";
+import { usePreferences, keyCombination } from "./preferences";
+type View =
+  "notes" | "library" | "graph" | "inbox" | "review" | "audio" | "settings";
 export default function App() {
+  const preferences = usePreferences();
   const [data, setData] = useState<Bootstrap>();
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -43,11 +47,19 @@ export default function App() {
   const [connected, setConnected] = useState(!hosted || !!pairingToken());
   const [view, setView] = useState<View>(() => {
     const v = new URLSearchParams(location.search).get("view");
-    return ["notes", "graph", "inbox", "review", "audio", "settings"].includes(
-      v || "",
-    )
+    return [
+      "notes",
+      "library",
+      "graph",
+      "inbox",
+      "review",
+      "audio",
+      "settings",
+    ].includes(v || "")
       ? (v as View)
-      : "notes";
+      : new URLSearchParams(location.search).has("note")
+        ? "notes"
+        : "library";
   });
   const [leaving, setLeaving] = useState<{ view: View; note?: Note }>();
   const [selected, setSelected] = useState(
@@ -86,6 +98,7 @@ export default function App() {
     setCreate(true);
   }
   const [newTitle, setNewTitle] = useState("");
+  const [newDate, setNewDate] = useState("");
   const [newContext, setNewContext] = useState("Machine learning");
   const [newGroup, setNewGroup] = useState("Unsorted");
   const [practice, setPractice] = useState<string>();
@@ -105,6 +118,18 @@ export default function App() {
     return () => window.removeEventListener("resize", resize);
   }, []);
   const dirty = useRef(false);
+  useEffect(
+    () =>
+      window.synapseEditing?.subscribe((command) => {
+        const event = new CustomEvent("synapse:action", {
+          detail: command,
+          cancelable: true,
+        });
+        window.dispatchEvent(event);
+        if (!event.defaultPrevented) window.synapseEditing?.native(command);
+      }),
+    [],
+  );
   const saveCurrent = useRef<(() => Promise<void>) | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -143,14 +168,6 @@ export default function App() {
   }
   useEffect(() => {
     if (!shared && connected) refresh();
-    const key = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
   }, [connected]);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
@@ -189,6 +206,43 @@ export default function App() {
     if (n) setSelected(n.id);
     if (innerWidth < 900) setSidebar(false);
   }
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        (event.target as HTMLElement).closest(".shortcut-list")
+      )
+        return;
+      const editing = (event.target as HTMLElement).closest(
+        "input,textarea,[contenteditable=true]",
+      );
+      if (editing && !event.ctrlKey && !event.altKey && !event.metaKey) return;
+      const action = Object.entries(preferences.shortcuts).find(
+        ([, shortcut]) => shortcut && shortcut === keyCombination(event),
+      )?.[0];
+      if (["library", "graph", "settings"].includes(action || "")) {
+        event.preventDefault();
+        navigate(action as View);
+      } else if (action === "new-note") {
+        event.preventDefault();
+        openCreate();
+      } else if (action === "search") {
+        event.preventDefault();
+        setSidebar(true);
+        setTimeout(() => searchRef.current?.focus(), 30);
+      } else if (action === "theme") {
+        event.preventDefault();
+        setTheme((t) =>
+          t === "light" ? "dark" : t === "dark" ? "paper" : "light",
+        );
+      } else if (action === "save") {
+        event.preventDefault();
+        void saveCurrent.current?.().catch((error) => notify(error.message));
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
   if (!connected) return <Connect onConnected={() => setConnected(true)} />;
   if (shared) return <Shared token={shared} />;
   if (!data)
@@ -246,7 +300,7 @@ export default function App() {
             href="/"
             onClick={(e) => {
               e.preventDefault();
-              navigate("notes");
+              navigate("library");
             }}
           >
             <BrandMark />
@@ -288,7 +342,7 @@ export default function App() {
         <nav aria-label="Main navigation">
           {(
             [
-              { id: "notes", label: "Notes", Icon: BookOpen },
+              { id: "library", label: "All notes", Icon: BookOpen },
               {
                 id: "inbox",
                 label: "Inbox",
@@ -308,7 +362,11 @@ export default function App() {
           ).map((item) => (
             <button
               key={item.id}
-              className={view === item.id ? "active" : ""}
+              className={
+                view === item.id || (item.id === "library" && view === "notes")
+                  ? "active"
+                  : ""
+              }
               onClick={() => navigate(item.id)}
             >
               <item.Icon size={18} />
@@ -404,25 +462,25 @@ export default function App() {
           New note
         </button>
         <div className="sidebar-bottom">
-          <div className="theme-options" aria-label="Appearance">
-            {(
-              [
-                ["light", "Light", Sun],
-                ["dark", "Dark", Moon],
-                ["paper", "Paper", FileText],
-              ] as const
-            ).map(([id, label, Icon]) => (
-              <button
-                key={id}
-                aria-label={label + " mode"}
-                aria-pressed={theme === id}
-                onClick={() => setTheme(id)}
-              >
-                <Icon size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
+          <button
+            className="theme-cycle"
+            aria-label={`Theme: ${theme}. Switch theme`}
+            title="Light, Dark, Paper"
+            onClick={() =>
+              setTheme((t) =>
+                t === "light" ? "dark" : t === "dark" ? "paper" : "light",
+              )
+            }
+          >
+            {theme === "light" ? (
+              <Sun size={16} />
+            ) : theme === "dark" ? (
+              <Moon size={16} />
+            ) : (
+              <FileText size={16} />
+            )}
+            {theme.charAt(0).toUpperCase() + theme.slice(1)}
+          </button>
           <div className="local-status">
             <span className="live-dot" />
             <span>
@@ -465,6 +523,17 @@ export default function App() {
             <button onClick={refresh}>Reconnect</button>
           </div>
         )}
+        {view === "library" && (
+          <NotesLibrary
+            notes={data.notes}
+            onOpen={(n) => navigate("notes", n)}
+            onNew={() => openCreate()}
+            onDelete={(ids) => {
+              setChecked(ids);
+              setDeleteConfirm(true);
+            }}
+          />
+        )}
         {view === "notes" &&
           (note ? (
             <NoteView
@@ -473,6 +542,7 @@ export default function App() {
               data={data}
               refresh={refresh}
               onOpen={(n) => navigate("notes", n)}
+              onLibrary={() => navigate("library")}
               onPractice={(id) => {
                 setPractice(id);
                 navigate("review");
@@ -642,6 +712,14 @@ export default function App() {
               onChange={(e) => setNewGroup(e.target.value)}
             />
           </label>
+          <label>
+            Date (optional)
+            <input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+            />
+          </label>
           <button
             className="primary"
             disabled={!newTitle.trim()}
@@ -652,12 +730,14 @@ export default function App() {
                   context: newContext,
                   group: newGroup,
                   body: "",
+                  noteDate: newDate || undefined,
                   parentId: creationParent,
                 });
                 if (createdCallback.current) await createdCallback.current(n);
                 await refresh();
                 setCreate(false);
                 setNewTitle("");
+                setNewDate("");
                 navigate("notes", n);
                 notify("Concept created as a local Markdown file.");
               } catch (e) {

@@ -12,3 +12,11 @@ const bridge: UpdateBridge = {
   },
 };
 contextBridge.exposeInMainWorld("synapseUpdates", bridge);
+contextBridge.exposeInMainWorld("synapseEditing", {
+  native: (command: string) => ipcRenderer.send("synapse:native-edit", command),
+  subscribe(listener: (command: string) => void) {
+    const handler = (_event: unknown, command: string) => listener(command);
+    ipcRenderer.on("synapse:edit", handler);
+    return () => ipcRenderer.removeListener("synapse:edit", handler);
+  },
+});

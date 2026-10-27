@@ -37,6 +37,7 @@ export default function NoteView({
   notify,
   onDirty,
   onSaveReady,
+  onLibrary,
 }: {
   note: Note;
   data: Bootstrap;
@@ -47,6 +48,7 @@ export default function NoteView({
   notify: (s: string) => void;
   onDirty: (d: boolean) => void;
   onSaveReady?: (save: (() => Promise<void>) | null) => void;
+  onLibrary?: () => void;
 }) {
   const initial = { ...note, body: bodyOf(note) };
   const [draft, setDraft] = useState<Note>(initial);
@@ -185,18 +187,10 @@ export default function NoteView({
     const before = (e: BeforeUnloadEvent) => {
       if (dirty.current) e.preventDefault();
     };
-    const key = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        save().catch((e) => notify(e.message));
-      }
-    };
     window.addEventListener("beforeunload", before);
-    window.addEventListener("keydown", key);
     return () => {
       onSaveReady?.(null);
       window.removeEventListener("beforeunload", before);
-      window.removeEventListener("keydown", key);
     };
   }, []);
   async function action(key: string, fn: () => Promise<unknown>) {
@@ -222,6 +216,7 @@ export default function NoteView({
             group: edited.group,
             parentId: edited.parentId,
             canvas: edited.canvas,
+            noteDate: edited.noteDate,
           }
         : {}),
       body: edited?.body ?? (body === undefined ? bodyOf(n) : body),
@@ -322,7 +317,17 @@ export default function NoteView({
       <article className="note-page">
         <header className="note-top">
           <span className="breadcrumb">
-            My notebook <ChevronRight size={13} />
+            {onLibrary ? (
+              <button
+                aria-label="Back to all notes"
+                onClick={() => action("navigate", async () => onLibrary())}
+              >
+                My notebook
+              </button>
+            ) : (
+              "My notebook"
+            )}{" "}
+            <ChevronRight size={13} />
             {lineage(draft, data.notes).map((ancestor) => (
               <span key={ancestor.id} className="ancestor">
                 <button
@@ -402,6 +407,11 @@ export default function NoteView({
             </div>
           )}
           <div className="note-meta">
+            {draft.noteDate && (
+              <time className="note-date" dateTime={draft.noteDate}>
+                {new Date(draft.noteDate + "T12:00:00").toLocaleDateString()}
+              </time>
+            )}
             <span className={"pill status " + draft.status}>
               <i className={"status-dot " + draft.status} />
               {draft.status}
@@ -421,6 +431,15 @@ export default function NoteView({
               <ChevronRight size={12} /> Page details
             </summary>
             <div className="context-row">
+              <label>
+                Date (optional)
+                <input
+                  aria-label="Note date"
+                  type="date"
+                  value={draft.noteDate || ""}
+                  onChange={(e) => edit({ noteDate: e.target.value || null })}
+                />
+              </label>
               <label>
                 Meaning{" "}
                 <input

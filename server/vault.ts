@@ -36,9 +36,22 @@ export const noteSchema = z.object({
     .transform((s) => s || "Unsorted"),
   layers: layersSchema,
   body: z.string().max(600000).optional(),
+  noteDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => {
+      const date = new Date(value + "T12:00:00Z");
+      return (
+        Number.isFinite(date.getTime()) &&
+        date.toISOString().slice(0, 10) === value
+      );
+    }, "Choose a valid date.")
+    .nullable()
+    .optional(),
   canvas: z
     .object({
       height: z.number().finite().min(0).max(100000),
+      width: z.number().finite().min(100).max(100000).optional(),
       items: z
         .array(
           z.object({
@@ -51,6 +64,10 @@ export const noteSchema = z.object({
               "pen",
               "arrow",
               "rectangle",
+              "ellipse",
+              "diamond",
+              "triangle",
+              "line",
             ]),
             x: z.number().finite().min(0).max(100000),
             y: z.number().finite().min(0).max(100000),
@@ -68,6 +85,7 @@ export const noteSchema = z.object({
               .max(15000)
               .optional(),
             fitted: z.boolean().optional(),
+            strokeWidth: z.number().finite().min(0.5).max(50).optional(),
           }),
         )
         .max(1500),

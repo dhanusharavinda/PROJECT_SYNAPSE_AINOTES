@@ -237,22 +237,42 @@ export async function createApp(
   api.post("/positions", async (req, res) => {
     const positions = z
       .record(
-        z.string().uuid(),
+        z.string().refine((key) => {
+          const valid = (id: string) => z.string().uuid().safeParse(id).success;
+          return (
+            valid(key) ||
+            (key.startsWith("roadmap-") && valid(key.slice(8))) ||
+            (key.startsWith("focus-") &&
+              key[42] === "-" &&
+              valid(key.slice(6, 42)) &&
+              valid(key.slice(43)))
+          );
+        }, "Invalid graph position key."),
         z.object({
           x: z.number().finite(),
           y: z.number().finite(),
-          pinned: z.boolean(),
+          pinned: z.boolean().default(false),
         }),
       )
       .parse(req.body);
     await vault.mutate((s) => {
       s.positions = positions;
     });
+    const exported: Record<string, { x: number; y: number; pinned: boolean }> =
+      {};
+    for (const [key, point] of Object.entries(positions)) {
+      const id = key.startsWith("roadmap-")
+        ? key.slice(8)
+        : key.startsWith("focus-")
+          ? key.slice(-36)
+          : key;
+      if (!exported[id] || key.startsWith("roadmap-")) exported[id] = point;
+    }
     await atomic(
       vault.file("maps/knowledge-graph.canvas"),
       JSON.stringify(
         {
-          nodes: Object.entries(positions).map(([id, p]) => ({
+          nodes: Object.entries(exported).map(([id, p]) => ({
             id,
             type: "file",
             file: `notes/${id}.md`,
@@ -1189,7 +1209,19 @@ export async function createApp(
         ((folder === "attachments" &&
           s.sources.some((x) => n.sources.includes(x.id) && x.file === name)) ||
           (folder === "drawings" &&
-            n.drawings.some((id) => name === id + ".svg")));
+            n.drawings.some((id) => name === id + ".svg")) ||
+          n.canvas?.items.some(
+            (item) =>
+              (folder === "drawings" &&
+                item.kind === "drawing" &&
+                name === item.drawingId + ".svg") ||
+              (folder === "attachments" &&
+                item.kind === "image" &&
+                [
+                  "../attachments/" + name,
+                  "/files/attachments/" + name,
+                ].includes(item.src || "")),
+          ) === true);
     }
     if (!allowed) throw new AppError(403, "File is not shared with this link.");
     if (folder === "drawings") {

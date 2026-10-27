@@ -18,6 +18,7 @@ import type { Server } from "node:http";
 import { createApp } from "../server/app.js";
 import { seed } from "../server/seed.js";
 import { createUpdates } from "./updates.js";
+import { nativeEdit, dispatchEdit } from "./editing.js";
 
 const { autoUpdater } = electronUpdater;
 if (process.env.SYNAPSE_DESKTOP_PROFILE)
@@ -234,6 +235,14 @@ async function switchVault() {
 }
 
 function installMenu() {
+  ipcMain.on("synapse:native-edit", (event, command: string) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      return;
+    nativeEdit(event.sender, command);
+  });
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -252,13 +261,28 @@ function installMenu() {
       {
         label: "Edit",
         submenu: [
-          { role: "undo" },
-          { role: "redo" },
-          { type: "separator" },
-          { role: "cut" },
-          { role: "copy" },
-          { role: "paste" },
-          { role: "selectAll" },
+          ...(
+            [
+              ["Undo", "undo", "CmdOrCtrl+Z"],
+              ["Redo", "redo", "CmdOrCtrl+Shift+Z"],
+              ["Redo", "redo", "CmdOrCtrl+Y"],
+              ["Cut", "cut", "CmdOrCtrl+X"],
+              ["Copy", "copy", "CmdOrCtrl+C"],
+              ["Paste", "paste", "CmdOrCtrl+V"],
+              ["Select all", "select-all", "CmdOrCtrl+A"],
+            ] as const
+          ).map(([label, command, accelerator], index) => ({
+            label,
+            accelerator,
+            visible: index !== 2,
+            click: () => {
+              dispatchEdit(
+                command,
+                mainWindow,
+                BrowserWindow.getFocusedWindow(),
+              );
+            },
+          })),
         ],
       },
       {
