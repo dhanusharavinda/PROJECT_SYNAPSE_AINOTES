@@ -173,6 +173,24 @@ it("keeps the local owner able to edit a shared page when signed out", async () 
     })
     .expect(200);
   expect((await a.vault.note(n.id)).title).toBe("Edited offline");
+  const child = (
+    await owner("/api/notes")
+      .send({ title: "Child", parentId: n.id })
+      .expect(201)
+  ).body;
+  const acquired = await owner(
+    "/api/collaboration/local/" + child.id + "/acquire",
+  )
+    .send({ cell: "title" })
+    .expect(200);
+  await owner("/api/collaboration/local/" + child.id + "/change")
+    .send({
+      changes: [
+        { cell: "title", base: acquired.body.hash, value: "Owner edits child" },
+      ],
+    })
+    .expect(200);
+  expect((await a.vault.note(child.id)).title).toBe("Owner edits child");
 });
 
 it("routes encrypted collaborator packets through scoped identity checks and cannot reuse them for full-vault device requests", async () => {

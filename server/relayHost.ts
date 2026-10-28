@@ -39,6 +39,7 @@ export class RelayHost {
   starting?: Promise<void>;
   invites = new Map<string, number>();
   inflight = new Set<string>();
+  watching = new Set<string>();
   constructor(
     private vault: Vault,
     private devices: DeviceSync,
@@ -213,13 +214,19 @@ export class RelayHost {
     );
     if (
       typeof input.path === "string" &&
-      /^collab\/(snapshot|acquire|change|release|file|upload)$/.test(
+      /^collab\/(watch|snapshot|acquire|change|release|file|upload)$/.test(
         input.path,
       ) &&
       this.onCollaboration
     ) {
-      if (this.inflight.size >= 8) return;
+      const watching = input.path === "collab/watch";
+      if (
+        this.inflight.size - this.watching.size >= 8 ||
+        (watching && this.watching.size >= 32)
+      )
+        return;
       this.inflight.add(p.id);
+      if (watching) this.watching.add(p.id);
       try {
         const result = await this.onCollaboration(p.client, input);
         const encrypted = await seal(
@@ -230,6 +237,7 @@ export class RelayHost {
         await sendPackets(this.socket!, p.client, p.id, c.publicKey, encrypted);
       } finally {
         this.inflight.delete(p.id);
+        this.watching.delete(p.id);
       }
       return;
     }
@@ -243,7 +251,7 @@ export class RelayHost {
     if (input.path === "connect" && peer) throw Error("Already paired");
     if (input.path !== "connect" && !peer)
       throw Error("Pair this device first");
-    if (this.inflight.size >= 4) return;
+    if (this.inflight.size - this.watching.size >= 4) return;
     this.inflight.add(p.id);
     try {
       const r = await fetch(

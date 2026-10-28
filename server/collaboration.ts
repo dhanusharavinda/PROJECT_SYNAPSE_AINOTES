@@ -64,6 +64,53 @@ export class Collaboration {
   roster: Record<string, Membership> = {};
   presence = new Map<string, Map<string, Presence>>();
   listeners = new Map<string, Set<(event: unknown) => void>>();
+  parents = new Map<string, string>();
+  versions = new Map<string, number>();
+  async syncHierarchy() {
+    this.parents = new Map(
+      (await this.vault.notes())
+        .filter((n) => n.parentId)
+        .map((n) => [n.id, n.parentId!]),
+    );
+  }
+  membership(id: string): Membership | undefined {
+    const seen = new Set<string>();
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      if (this.roster[id]) return this.roster[id];
+      id = this.parents.get(id) || "";
+    }
+  }
+  async watch(id: string, p: Principal, cursor?: number) {
+    await this.syncHierarchy();
+    this.role(id, p);
+    if (
+      cursor === this.versions.get(id) ||
+      (cursor === 0 && !this.versions.has(id))
+    ) {
+      await new Promise<void>((resolve) => {
+        let stop = () => {};
+        const timer = setTimeout(() => {
+          stop();
+          resolve();
+        }, 15000);
+        stop = this.subscribe(id, p, () => {
+          clearTimeout(timer);
+          stop();
+          resolve();
+        });
+        if ((this.versions.get(id) || 0) !== cursor) {
+          clearTimeout(timer);
+          stop();
+          resolve();
+        }
+      });
+    }
+    return {
+      cursor: this.versions.get(id) || 0,
+      snapshot: await this.snapshot(id, p),
+    };
+  }
   constructor(private vault: Vault) {}
   async load() {
     try {
@@ -78,7 +125,7 @@ export class Collaboration {
     }
   }
   role(noteId: string, p: Principal) {
-    const m = this.roster[noteId];
+    const m = this.membership(noteId);
     if (p.localOwner) return "owner";
     if (!m) throw new AppError(403, "This page has not been shared with you.");
     if (p.email === m.owner) return "owner";
@@ -101,10 +148,24 @@ export class Collaboration {
     if (!["viewer", "editor"].includes(role))
       throw new AppError(400, "Choose viewer or editor.");
     const existingNote = await this.vault.note(noteId);
+    await this.syncHierarchy();
+    const notes = await this.vault.notes();
+    const subtree = notes.filter((n) => {
+      let id = n.id;
+      const seen = new Set<string>();
+      while (id && !seen.has(id)) {
+        if (id === noteId) return true;
+        seen.add(id);
+        id = this.parents.get(id) || "";
+      }
+      return false;
+    });
     const initialText = [
-      existingNote.body || "",
-      ...Object.values(existingNote.layers),
-      ...(existingNote.canvas?.items.map((i) => i.src || "") || []),
+      ...subtree.flatMap((n) => [
+        n.body || "",
+        ...Object.values(n.layers),
+        ...(n.canvas?.items.map((i) => i.src || "") || []),
+      ]),
     ].join("\n");
     const initialFiles = [
       ...new Set(
@@ -172,10 +233,18 @@ export class Collaboration {
   active(id: string) {
     const now = Date.now(),
       map = this.presence.get(id);
-    for (const [key, p] of map || []) if (p.expires < now) map!.delete(key);
+    for (const [key, p] of map || []) {
+      try {
+        this.role(id, p);
+        if (p.expires < now) map!.delete(key);
+      } catch {
+        map!.delete(key);
+      }
+    }
     return [...(map?.values() || [])];
   }
   async snapshot(id: string, p: Principal) {
+    await this.syncHierarchy();
     const role = this.role(id, p),
       note = await this.vault.note(id);
     return {
@@ -308,6 +377,23 @@ export class Collaboration {
     };
   }
   broadcast(id: string, event: unknown) {
+    this.versions.set(id, (this.versions.get(id) || 0) + 1);
     for (const listener of this.listeners.get(id) || []) listener(event);
+    if ((event as any)?.type === "members") {
+      for (const child of this.parents.keys()) {
+        let parent = this.parents.get(child);
+        const seen = new Set<string>([child]);
+        while (parent && !seen.has(parent)) {
+          if (parent === id) {
+            this.versions.set(child, (this.versions.get(child) || 0) + 1);
+            for (const listener of this.listeners.get(child) || [])
+              listener(event);
+            break;
+          }
+          seen.add(parent);
+          parent = this.parents.get(parent);
+        }
+      }
+    }
   }
 }

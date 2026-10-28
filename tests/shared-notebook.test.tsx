@@ -83,6 +83,45 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+it("applies an incoming live update while preserving a pending local text draft", async () => {
+  const original = mock.call.getMockImplementation()!;
+  let deliver: (value: any) => void = () => {};
+  mock.call.mockImplementation((path: string, body: any) =>
+    path.endsWith("/watch")
+      ? new Promise((resolve) => {
+          deliver = resolve;
+        })
+      : original(path, body),
+  );
+  render(
+    <SharedNotebook
+      id={note.id}
+      connection="test"
+      notify={() => {}}
+      onBack={() => {}}
+    />,
+  );
+  const body = await screen.findByLabelText("Body");
+  fireEvent.change(body, { target: { value: "Local draft" } });
+  deliver({
+    cursor: 1,
+    snapshot: {
+      note: { ...note, title: "Remote title" },
+      role: "editor",
+      cells: {
+        body: { value: note.body, hash: base },
+        title: { value: "Remote title", hash: base },
+      },
+      presence: [],
+    },
+  });
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("Shared page title") as HTMLInputElement).value,
+    ).toBe("Remote title"),
+  );
+  expect((body as HTMLTextAreaElement).value).toBe("Local draft");
+});
 it("opens the diagram composer from a shared page instead of rejecting the canvas command", async () => {
   const notify = vi.fn();
   render(

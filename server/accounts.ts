@@ -103,8 +103,9 @@ export class Accounts {
     return { session: client, email: me.email, name: me.name, localOwner };
   }
   async publish(id: string) {
+    await this.collaboration.syncHierarchy();
     const n = await this.vault.note(id),
-      membership = this.collaboration.roster[id];
+      membership = this.collaboration.membership(id);
     if (!membership)
       throw new AppError(404, "This page has no collaborators yet.");
     await this.relay.configure();
@@ -176,13 +177,20 @@ export class Accounts {
       ))
         if (!notes.some((n) => n.id === page.id))
           await this.remote("unpublish", { id: page.id, room: c.room });
-      for (const id of Object.keys(this.collaboration.roster)) {
+      await this.collaboration.syncHierarchy();
+      for (const page of pages.filter(
+        (p: any) => p.room === c.room && !this.collaboration.membership(p.id),
+      ))
+        await this.remote("unpublish", { id: page.id, room: c.room });
+      for (const id of notes
+        .filter((n) => this.collaboration.membership(n.id))
+        .map((n) => n.id)) {
         const n = notes.find((n) => n.id === id);
         if (!n) continue;
         const published = pages.find(
             (p: any) => p.room === c.room && p.id === id,
           ),
-          membership = this.collaboration.roster[id];
+          membership = this.collaboration.membership(id)!;
         if (
           !published ||
           published.title !== n.title ||
@@ -227,14 +235,26 @@ export class Accounts {
       const principal = localOwner
         ? {
             session: "owner",
-            email: this.collaboration.roster[id]?.owner || "",
+            email: this.collaboration.membership(id)?.owner || "",
             name: this.session?.identity.name || "You",
             localOwner: true,
           }
         : await this.principal(client, input.token);
       const action = input.path.slice(7),
         c = this.collaboration;
+      await c.syncHierarchy();
+      if (principal.localOwner)
+        principal.email = c.membership(id)?.owner || principal.email;
       c.role(id, principal);
+      if (action === "watch")
+        return {
+          status: 200,
+          data: await c.watch(
+            id,
+            principal,
+            z.number().int().min(0).optional().parse(body.cursor),
+          ),
+        };
       if ((await this.vault.note(id)).archived && !localOwner)
         throw new AppError(404, "This page has been archived by its owner.");
       if (action === "snapshot")
@@ -328,7 +348,7 @@ export class Accounts {
           n = await this.vault.note(id);
         const state = await this.vault.state();
         const allowed =
-          (c.roster[id]?.files || []).includes(folder + "/" + name) ||
+          (c.membership(id)?.files || []).includes(folder + "/" + name) ||
           (folder === "drawings"
             ? n.drawings.includes(name.slice(0, 36))
             : state.sources.some(
@@ -479,9 +499,14 @@ export class Accounts {
     r.post("/collaboration/remote/:connection/:action", async (q, s) => {
       const peer = await this.peer(q.params.connection);
       if (
-        !["snapshot", "acquire", "change", "release", "upload"].includes(
-          q.params.action,
-        )
+        ![
+          "watch",
+          "snapshot",
+          "acquire",
+          "change",
+          "release",
+          "upload",
+        ].includes(q.params.action)
       )
         throw new AppError(400, "Unknown operation.");
       const result = await peer.client.request(
@@ -535,17 +560,28 @@ export class Accounts {
           b.role,
         );
       await this.publish(q.params.id);
+      await this.sweepIndex(true);
       s.json({ ok: true });
     });
     r.post("/collaboration/local/:id/:action", async (q, s) => {
       const p: Principal = {
           session: "owner",
-          email: this.collaboration.roster[q.params.id]?.owner || "",
+          email: this.collaboration.membership(q.params.id)?.owner || "",
           name: this.session?.identity.name || "You",
           localOwner: true,
         },
         b = q.body,
         c = this.collaboration;
+      await c.syncHierarchy();
+      p.email = c.membership(q.params.id)?.owner || p.email;
+      if (q.params.action === "watch")
+        return s.json(
+          await c.watch(
+            q.params.id,
+            p,
+            z.number().int().min(0).optional().parse(b.cursor),
+          ),
+        );
       if (q.params.action === "upload") {
         const result = await this.dispatch(
           "owner",

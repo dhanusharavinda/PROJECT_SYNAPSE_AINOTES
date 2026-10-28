@@ -320,3 +320,50 @@
     background: color-mix(in srgb, var(--surface) 55%, transparent);
   }
 }
+/* Compact wheel, expand only while a category is open. */
+.synapse-wheel.context-menu {
+  width: 208px;
+  height: 208px;
+  transition:
+    width 160ms ease,
+    height 160ms ease,
+    opacity 180ms ease;
+}
+.synapse-wheel.context-menu.is-expanded {
+  width: 292px;
+  height: 292px;
+}
+.synapse-wheel .wheel-core {
+  width: 60px;
+  height: 60px;
+}
+.synapse-wheel .wheel-category {
+  width: 40px;
+  height: 40px;
+}
+.synapse-wheel .wheel-category span {
+  font-size: 9px;
+}
+.synapse-wheel .wheel-action {
+  width: 34px;
+  height: 34px;
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .synapse-wheel.context-menu,
+  .synapse-wheel.context-menu.is-expanded {
+    width: calc(100vw - 24px);
+    height: auto;
+  }
+  .synapse-wheel .wheel-category,
+  .synapse-wheel .wheel-action {
+    width: auto;
+    height: 44px;
+  }
+  .synapse-wheel .wheel-category span {
+    font-size: 11px;
+  }
+  .synapse-wheel .wheel-core {
+    width: 100%;
+    height: 42px;
+  }
+}

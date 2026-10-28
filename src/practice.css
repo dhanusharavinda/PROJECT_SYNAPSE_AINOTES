@@ -318,3 +318,53 @@
     transition: none;
   }
 }
+.practice-page .teacher-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 144px;
+  overflow: auto;
+}
+.practice-page .teacher-notes label {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.practice-page .teacher-notes input {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  flex: 0 0 14px;
+  margin: 0;
+  padding: 0;
+}
+.practice-page .ai-teacher > p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0;
+}
+.practice-page .recall-passage {
+  min-height: 100px;
+  padding: 14px 12px;
+}
+.recall-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.recall-navigation button {
+  padding: 6px;
+  border: 0;
+  background: transparent;
+}

@@ -283,9 +283,12 @@ export async function createApp(
       }
       return { ...state, notes };
     });
+    await collaboration.syncHierarchy();
     res.json({
       ...indexed,
-      collaborations: Object.keys(collaboration.roster),
+      collaborations: indexed.notes
+        .filter((n) => collaboration.membership(n.id))
+        .map((n) => n.id),
       config: providers.public(!!options.lan),
     });
   });
@@ -403,6 +406,7 @@ export async function createApp(
       .json(
         await vault.write({ ...input, id: uid(), revision: 0, updated: "" }),
       );
+    void accounts.sweepIndex(true).catch(() => {});
   });
   api.get("/notes/:id", async (req, res) =>
     res.json(await vault.note(String(req.params.id))),

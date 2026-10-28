@@ -34,6 +34,34 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
+it("pushes changes immediately to a waiting second session and includes live presence", async () => {
+  const first = await service.watch(id, b);
+  const pending = service.watch(id, b, first.cursor);
+  const acquired = await service.acquire(id, a, "body");
+  const presence = await pending;
+  expect(presence.snapshot.presence.some((p) => p.session === "a")).toBe(true);
+  const next = service.watch(id, b, presence.cursor);
+  await service.change(id, a, [
+    { cell: "body", base: acquired.hash, value: "Live edit" },
+  ]);
+  expect((await next).snapshot.note.body).toBe("Live edit");
+});
+it("inherits parent access for children and grandchildren, and revokes it without granting unrelated pages", async () => {
+  const child = await vault.write({ ...newTabletNote(), parentId: id });
+  const grandchild = await vault.write({
+    ...newTabletNote(),
+    parentId: child.id,
+  });
+  const unrelated = await vault.write(newTabletNote());
+  expect((await service.snapshot(grandchild.id, a)).role).toBe("editor");
+  expect((await service.snapshot(child.id, viewer)).role).toBe("viewer");
+  await expect(service.snapshot(unrelated.id, a)).rejects.toThrow("shared");
+  const first = await service.watch(grandchild.id, a);
+  const waiting = service.watch(grandchild.id, a, first.cursor);
+  const rejected = expect(waiting).rejects.toThrow("access");
+  await service.revoke(id, owner, a.email);
+  await rejected;
+});
 it("enforces viewer and invite permissions in the service", async () => {
   await expect(service.acquire(id, viewer, "body")).rejects.toThrow("Viewer");
   await expect(

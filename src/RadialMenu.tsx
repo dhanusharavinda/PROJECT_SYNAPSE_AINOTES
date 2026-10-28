@@ -218,12 +218,13 @@ export default function RadialMenu({
     };
   }, []);
   const sub = actions.filter((a) => a.group === active);
-  const cx = Math.max(188, Math.min(x, innerWidth - 188)),
-    cy = Math.max(188, Math.min(y, innerHeight - 188));
+  const radius = active ? 150 : 108;
+  const cx = Math.max(radius, Math.min(x, innerWidth - radius)),
+    cy = Math.max(radius, Math.min(y, innerHeight - radius));
   return createPortal(
     <div
       ref={root}
-      className={`synapse-wheel sheet-context context-menu${fading ? " is-fading" : ""}`}
+      className={`synapse-wheel sheet-context context-menu${active ? " is-expanded" : ""}${fading ? " is-fading" : ""}`}
       role="menu"
       aria-label={label}
       style={{ left: cx, top: cy }}
@@ -295,8 +296,8 @@ export default function RadialMenu({
               aria-expanded={active === group}
               style={
                 {
-                  "--x": `${Math.cos(angle) * 77}px`,
-                  "--y": `${Math.sin(angle) * 77}px`,
+                  "--x": `${Math.cos(angle) * 68}px`,
+                  "--y": `${Math.sin(angle) * 68}px`,
                 } as CSSProperties
               }
               onPointerEnter={() => {
@@ -338,8 +339,8 @@ export default function RadialMenu({
             "aria-label": label,
             style: {
               ...action.props.style,
-              "--x": `${Math.cos(angle) * 146}px`,
-              "--y": `${Math.sin(angle) * 146}px`,
+              "--x": `${Math.cos(angle) * 124}px`,
+              "--y": `${Math.sin(angle) * 124}px`,
             },
             onPointerEnter: () => setCaption(label),
             onFocus: () => setCaption(label),

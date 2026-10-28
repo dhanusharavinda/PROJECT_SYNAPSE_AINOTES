@@ -41,6 +41,7 @@ export function recallUnits(note: Note): RecallUnit[] {
     text: text.trim().slice(0, 1800),
   }));
   for (const item of note.canvas?.items || []) {
+    if (!["text", "table"].includes(item.kind) && !item.uncertain) continue;
     const text = practiceText(item.text || "");
     if (text || item.uncertain)
       units.push({

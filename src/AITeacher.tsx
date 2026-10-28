@@ -40,10 +40,7 @@ export default function AITeacher({ notes }: { notes: Note[] }) {
   return (
     <details className="ai-teacher">
       <summary>Ask AI teacher</summary>
-      <p>
-        Pick up to ten notes. Try recalling the answer before asking for a hint.
-        Requests use your configured AI provider.
-      </p>
+      <p>Choose notes for a question. Uses your configured AI.</p>
       <div className="teacher-notes">
         {notes.map((n) => (
           <label key={n.id}>

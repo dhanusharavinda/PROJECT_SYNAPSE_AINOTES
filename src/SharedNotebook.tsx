@@ -226,8 +226,11 @@ export default function SharedNotebook({
         "Local draft space is full. Keep a draft copy if saving cannot finish.",
       );
     }
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush().catch(() => {}), 350);
+    if (!timer.current)
+      timer.current = setTimeout(() => {
+        timer.current = undefined;
+        void flush().catch(() => {});
+      }, 180);
   }
   async function focusCell(next: string) {
     if (snapshot?.role === "viewer" || !next) return;
@@ -247,14 +250,37 @@ export default function SharedNotebook({
     void call("snapshot")
       .then(adopt)
       .catch((e) => setError(e.message));
-    const poll = setInterval(() => {
-      if (!inflight.current && !pending.current.size)
-        void call("snapshot")
-          .then(adopt)
-          .catch((e) => {
-            if (alive.current) setError(e.message);
-          });
-    }, 1500);
+    let stopped = false,
+      cursor: number | undefined,
+      retry: ReturnType<typeof setTimeout>;
+    let liveFailed = false;
+    const watch = async () => {
+      try {
+        const result = await call("watch", { cursor });
+        if (stopped) return;
+        if (!result?.snapshot)
+          throw new Error(
+            "Update Synapse on both computers to enable live editing.",
+          );
+        cursor = result.cursor;
+        if (liveFailed) {
+          setError("");
+          liveFailed = false;
+        }
+        if (inflight.current) {
+          await inflight.current.catch(() => {});
+          if (stopped) return;
+          adopt(await call("snapshot"));
+        } else adopt(result.snapshot);
+        void watch();
+      } catch (e) {
+        if (stopped) return;
+        liveFailed = true;
+        setError((e as Error).message);
+        retry = setTimeout(() => void watch(), 1500);
+      }
+    };
+    void watch();
     const heartbeat = setInterval(() => {
       if (cell.current)
         void call("acquire", { cell: cell.current })
@@ -266,7 +292,8 @@ export default function SharedNotebook({
     onSaveReady?.(flush);
     return () => {
       alive.current = false;
-      clearInterval(poll);
+      stopped = true;
+      clearTimeout(retry);
       clearInterval(heartbeat);
       clearTimeout(timer.current);
       void call("release", {}).catch(() => {});

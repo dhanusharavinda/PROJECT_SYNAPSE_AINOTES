@@ -51,6 +51,8 @@ export default function Practice({
   const [hint, setHint] = useState(false);
   const [answer, setAnswer] = useState("");
   const [index, setIndex] = useState(0);
+  const [recallIndex, setRecallIndex] = useState(0);
+  useEffect(() => setRecallIndex(0), [id]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [recorded, setRecorded] = useState(false);
@@ -308,59 +310,85 @@ export default function Practice({
           </div>
           {!deck.units.length && <p>Add an explanation to this note first.</p>}
           <div className="recall-passages">
-            {deck.units.map((unit) => (
-              <div
-                className={
-                  "recall-passage" +
-                  (selected.includes(unit.id) ? " selected" : "")
-                }
-                key={unit.id}
-              >
-                <label>
-                  <input
-                    aria-label={`Hide ${unit.label}${hidden ? "" : ": " + unit.text.slice(0, 45)}`}
-                    type="checkbox"
-                    disabled={hidden || !unit.text}
-                    checked={selected.includes(unit.id)}
-                    onChange={(e) => {
-                      setSelected((s) =>
-                        e.target.checked
-                          ? [...s, unit.id]
-                          : s.filter((x) => x !== unit.id),
-                      );
-                      setRevealed(false);
-                    }}
-                  />
-                  <span>
-                    {unit.uncertain && (
-                      <Pin size={12} className="uncertainty-pin" />
-                    )}
-                    {unit.label}
-                  </span>
-                </label>
-                {hidden &&
-                selected.includes(unit.id) &&
-                !revealedUnits.includes(unit.id) ? (
-                  <button
-                    className="recall-mask"
-                    aria-label={`Reveal ${unit.label}`}
-                    onClick={() => {
-                      setHint(true);
-                      setRevealedUnits((s) => [...s, unit.id]);
-                    }}
-                  >
-                    <Eye size={16} />
-                    <span>Reveal this part</span>
-                  </button>
-                ) : (
-                  <p>
-                    {unit.text ||
-                      "This pinned object has no text. Open the note to review it visually."}
-                  </p>
-                )}
-              </div>
-            ))}
+            {deck.units
+              .slice(
+                Math.min(recallIndex, Math.max(0, deck.units.length - 1)),
+                Math.min(recallIndex, Math.max(0, deck.units.length - 1)) + 1,
+              )
+              .map((unit) => (
+                <div
+                  className={
+                    "recall-passage" +
+                    (selected.includes(unit.id) ? " selected" : "")
+                  }
+                  key={unit.id}
+                >
+                  <label>
+                    <input
+                      aria-label={`Hide ${unit.label}${hidden ? "" : ": " + unit.text.slice(0, 45)}`}
+                      type="checkbox"
+                      disabled={hidden || !unit.text}
+                      checked={selected.includes(unit.id)}
+                      onChange={(e) => {
+                        setSelected((s) =>
+                          e.target.checked
+                            ? [...s, unit.id]
+                            : s.filter((x) => x !== unit.id),
+                        );
+                        setRevealed(false);
+                      }}
+                    />
+                    <span>
+                      {unit.uncertain && (
+                        <Pin size={12} className="uncertainty-pin" />
+                      )}
+                      {unit.label}
+                    </span>
+                  </label>
+                  {hidden &&
+                  selected.includes(unit.id) &&
+                  !revealedUnits.includes(unit.id) ? (
+                    <button
+                      className="recall-mask"
+                      aria-label={`Reveal ${unit.label}`}
+                      onClick={() => {
+                        setHint(true);
+                        setRevealedUnits((s) => [...s, unit.id]);
+                      }}
+                    >
+                      <Eye size={16} />
+                      <span>Reveal this part</span>
+                    </button>
+                  ) : (
+                    <p>
+                      {unit.text ||
+                        "This pinned object has no text. Open the note to review it visually."}
+                    </p>
+                  )}
+                </div>
+              ))}
           </div>
+          {deck.units.length > 1 && (
+            <div className="recall-navigation">
+              <button
+                aria-label="Previous passage"
+                disabled={recallIndex === 0}
+                onClick={() => setRecallIndex((i) => i - 1)}
+              >
+                <ArrowLeft size={15} />
+              </button>
+              <span>
+                {recallIndex + 1} / {deck.units.length}
+              </span>
+              <button
+                aria-label="Next passage"
+                disabled={recallIndex >= deck.units.length - 1}
+                onClick={() => setRecallIndex((i) => i + 1)}
+              >
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          )}
           {hidden && (
             <>
               <details className="practice-write">
