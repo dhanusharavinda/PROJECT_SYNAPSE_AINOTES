@@ -18,6 +18,27 @@ import {
   shortcutLabels,
   keyCombination,
 } from "./preferences";
+function WelcomePreference() {
+  const [long, setLong] = useState(
+    () => localStorage.getItem("synapse-long-welcome") === "true",
+  );
+  return (
+    <label className="checkline">
+      <input
+        type="checkbox"
+        checked={long}
+        onChange={(e) => {
+          setLong(e.target.checked);
+          localStorage.setItem(
+            "synapse-long-welcome",
+            String(e.target.checked),
+          );
+        }}
+      />
+      Five-second welcome animation
+    </label>
+  );
+}
 export default function Settings({
   data,
   refresh,
@@ -546,6 +567,10 @@ export default function Settings({
           ))}
         </section>
       </div>
+      <section className="settings-section">
+        <h2>Opening Synapse</h2>
+        <WelcomePreference />
+      </section>
       <footer className="settings-save">
         {!hosted && (
           <button onClick={() => setClearing(true)}>Clear notebook data</button>

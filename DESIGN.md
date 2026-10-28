@@ -130,6 +130,14 @@ components:
 
 # Design System: Synapse
 
+## Quiet tools and Practice, version 1.8
+
+The notebook remains the working surface. Practice is a separate destination for recall, flashcards and explicitly recorded attempts. A red uncertainty pin on an object is the only persistent study annotation. Study lens is a temporary view, never a saved opacity change.
+
+Desktop contextual actions use a two-level radial menu. Touch and narrow screens use the same categories in a bottom sheet. Arrow variants use symbols within the existing Arrow tool. Sharing has People and View link tabs; operational constraints remain available through disclosures. Visual history restores individual objects without replacing the whole canvas.
+
+The user requested a softly moving sage startup treatment. This is an intentional exception to the generic gradient restriction. It briefly displays the name and fades away, with an optional five-second setting, a skip action and reduced-motion support. Existing sage/ink colors and Inter/Lora type remain pinned.
+
 ## Dotted sheet, version 1.3
 
 Dotted extends the existing theme control rather than adding another switch. The writing surface uses white with muted gray-green dots every 16 pixels. Pink/green marker tools use saved translucent ink; default font colours have transparent backgrounds. A selection's resize corner is visible without opening a menu, and the trash icon sits beside Eraser. The existing toolbar wraps at narrow widths. AI teacher and destructive reset stay behind disclosures and confirmation so ordinary writing remains the main task.

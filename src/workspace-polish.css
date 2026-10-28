@@ -1,0 +1,86 @@
+.share-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--pale);
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+.share-tabs button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
+.share-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--ink);
+}
+.share-details {
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.share-details summary {
+  cursor: pointer;
+}
+.share-details p {
+  max-width: 48ch;
+  line-height: 1.6;
+}
+.page-history > label {
+  max-width: 440px;
+}
+.history-preview {
+  max-height: 440px;
+  overflow: auto;
+  background: var(--surface);
+  padding: 20px;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+.history-recover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.history-object {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  max-width: 100%;
+}
+.history-object input {
+  width: 16px;
+}
+.history-object span {
+  overflow-wrap: anywhere;
+}
+.note-top .actions button {
+  transition:
+    background-color 140ms ease,
+    opacity 140ms ease;
+}
+@media (max-width: 600px) {
+  .share-simple .invite-controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+  .share-simple .invite-controls input {
+    grid-column: 1/-1;
+  }
+  .note-top .actions {
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .history-preview {
+    padding: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-top .actions button {
+    transition: none;
+  }
+}

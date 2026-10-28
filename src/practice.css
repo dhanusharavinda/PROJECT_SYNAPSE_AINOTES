@@ -1,0 +1,241 @@
+.practice-page {
+  max-width: 1100px;
+  margin-inline: auto;
+}
+.practice-heading,
+.practice-controls,
+.practice-meta,
+.recall-controls,
+.flashcard-position {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.practice-heading {
+  margin-bottom: 24px;
+}
+.practice-heading h1 {
+  margin: 0;
+}
+.practice-heading button.active {
+  color: var(--ink);
+  background: var(--pale);
+}
+.practice-controls select {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+}
+.practice-modes {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--pale);
+  border-radius: 9px;
+}
+.practice-modes button {
+  border: 0;
+  background: transparent;
+}
+.practice-modes button[aria-pressed="true"] {
+  background: var(--surface, #fff);
+  color: var(--ink);
+}
+.practice-meta {
+  margin: 14px 0 24px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.practice-schedule {
+  text-align: right;
+}
+.practice-schedule label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.practice-schedule input {
+  width: 15px;
+  height: 15px;
+}
+.practice-schedule small {
+  display: block;
+  margin-top: 8px;
+}
+.recall-controls p {
+  margin: 0;
+  font-size: 14px;
+}
+.recall-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.recall-toggle input {
+  width: 16px;
+  height: 16px;
+}
+.recall-passages {
+  display: grid;
+  gap: 22px;
+  padding-block: 24px;
+}
+.recall-passage {
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+.recall-passage.selected {
+  background: var(--pale);
+}
+.recall-passage label {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.recall-passage label span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.recall-passage input {
+  width: 15px;
+  height: 15px;
+}
+.recall-passage p {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  max-width: 75ch;
+  line-height: 1.7;
+}
+.recall-mask {
+  width: 100%;
+  margin-top: 12px;
+  min-height: 66px;
+  justify-content: center;
+  border: 0;
+  background: var(--surface, #fff);
+}
+.uncertainty-pin {
+  color: #b7464a;
+  fill: #b7464a;
+}
+.practice-page textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  margin-bottom: 16px;
+}
+.flashcard-stage {
+  min-height: 320px;
+  background: var(--surface, #fff);
+  padding: 30px;
+  border-radius: 10px;
+}
+.flashcard-empty {
+  max-width: 60ch;
+  padding-block: 16px;
+}
+.flashcard-empty h2 {
+  margin-top: 0;
+}
+.flashcard-empty p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+.flashcard-empty small {
+  display: block;
+  margin-top: 18px;
+  color: var(--muted);
+}
+.flashcard-position {
+  color: var(--muted);
+  font-size: 13px;
+}
+.flashcard-position > div {
+  display: flex;
+  gap: 8px;
+}
+.flashcard-stage h2 {
+  font-family: inherit;
+  font-size: 23px;
+  line-height: 1.5;
+  margin: 24px 0;
+  max-width: 55ch;
+}
+.flashcard-stage textarea {
+  margin-top: 20px;
+}
+.practice-hint {
+  background: var(--pale);
+  padding: 12px 16px;
+  border-radius: 6px;
+}
+.flashcard-answer {
+  line-height: 1.8;
+}
+.flashcard-answer details {
+  margin-top: 24px;
+  font-size: 14px;
+}
+.flashcard-answer blockquote {
+  white-space: pre-wrap;
+  margin: 12px 0;
+  color: var(--muted);
+}
+.practice-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0;
+}
+.practice-rating > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.practice-rating small {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+.practice-error {
+  color: var(--ink);
+  background: var(--pale);
+  padding: 14px;
+}
+@media (max-width: 600px) {
+  .practice-controls,
+  .recall-controls {
+    flex-wrap: wrap;
+  }
+  .practice-controls select {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .practice-controls .practice-modes {
+    width: 100%;
+  }
+  .practice-modes button {
+    flex: 1;
+    min-height: 42px;
+  }
+  .flashcard-stage {
+    padding: 18px;
+  }
+  .recall-passage {
+    padding: 14px;
+  }
+  .practice-rating button {
+    min-height: 42px;
+  }
+}

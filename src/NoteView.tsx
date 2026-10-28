@@ -4,6 +4,7 @@ import {
   Link2,
   Plus,
   Share2,
+  Brain,
   PanelRightClose,
   PanelRightOpen,
   Sparkles,
@@ -30,6 +31,7 @@ import { bodyOf, lineage } from "./content";
 import DiagramPreview from "./DiagramPreview";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
 import SlidesExport from "./SlidesExport";
+import PageHistory from "./PageHistory";
 import { noteUsesResource } from "./resourceRefs";
 const Drawing = lazy(() => import("./Drawing"));
 const layers: Layer[] = ["intuition", "technical", "implementation"];
@@ -122,8 +124,14 @@ export default function NoteView({
   const [proposal, setProposal] = useState<Proposal>();
   const [diagramSelection, setDiagramSelection] = useState("");
   const [diagramType, setDiagramType] = useState<
-    "flowchart" | "hierarchy" | "concept-map"
-  >("flowchart");
+    | "auto"
+    | "flowchart"
+    | "hierarchy"
+    | "concept-map"
+    | "architecture"
+    | "data-flow"
+    | "state-machine"
+  >("auto");
   const [diagramNotes, setDiagramNotes] = useState<string[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [shareRole, setShareRole] = useState("viewer");
@@ -428,6 +436,15 @@ export default function NoteView({
               Share
             </button>
             <button
+              title="Practice this note"
+              onClick={() =>
+                action("practice", async () => onPractice(draft.id))
+              }
+            >
+              <Brain size={14} />
+              Practice
+            </button>
+            <button
               title="Export slides for LinkedIn"
               onClick={() =>
                 void save()
@@ -658,7 +675,7 @@ export default function NoteView({
                 onClick={() => setProposal(p)}
               >
                 <Workflow size={15} />
-                Flowchart ready for review <ChevronRight size={14} />
+                Diagram ready for review <ChevronRight size={14} />
               </button>
             ))}
           <NotebookSheet
@@ -720,7 +737,7 @@ export default function NoteView({
               onClick={() => command("flowchart")}
             >
               <Workflow size={14} />
-              Generate flowchart
+              Create diagram
             </button>
             <button
               onMouseDown={(e) => e.preventDefault()}
@@ -800,36 +817,7 @@ export default function NoteView({
               )}
             </details>
           </section>
-          <details className="note-practice">
-            <summary>Practice & review</summary>
-            <div className="practice-strip">
-              <div>
-                <h3>Could you explain this without looking?</h3>
-                <p>
-                  {lastReview
-                    ? `Last attempt: ${lastReview.hintUsed ? "needed a hint, " : ""}${lastReview.rating}. Next review ${new Date(lastReview.due).toLocaleDateString()}.`
-                    : "Start with recall, then reveal your explanation."}
-                </p>
-              </div>
-              <button
-                className="primary"
-                onClick={() =>
-                  action("practice", async () => onPractice(draft.id))
-                }
-              >
-                Practice this concept <ArrowUpRight size={16} />
-              </button>
-            </div>
-          </details>
           <footer className="note-footer">
-            <label className="review-toggle">
-              <input
-                type="checkbox"
-                checked={draft.reviewEnabled !== false}
-                onChange={(e) => edit({ reviewEnabled: e.target.checked })}
-              />
-              Include in revision
-            </label>
             <button onClick={() => edit({ status: "explained" })}>
               <Check size={13} />
               Mark explained in my words
@@ -1143,8 +1131,7 @@ export default function NoteView({
       {modal === "link" && (
         <Modal title="Connect a concept" onClose={() => setModal("")}>
           <p className="muted">
-            Choose an existing note and explain the connection. Backlinks appear
-            automatically.
+            Choose a note. Add your reasoning if it helps you remember.
           </p>
           <label>
             Concept
@@ -1178,7 +1165,7 @@ export default function NoteView({
             </select>
           </label>
           <label>
-            Why do these ideas connect?
+            These connect because… (optional)
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -1250,6 +1237,10 @@ export default function NoteView({
                     setDiagramType(e.target.value as typeof diagramType)
                   }
                 >
+                  <option value="auto">Choose for me</option>
+                  <option value="architecture">Architecture</option>
+                  <option value="data-flow">Data flow</option>
+                  <option value="state-machine">State machine</option>
                   <option value="flowchart">
                     Flowchart: steps and decisions
                   </option>
@@ -1261,7 +1252,7 @@ export default function NoteView({
               </label>
               {diagramSelection ? (
                 <>
-                  <p>Using selected text</p>
+                  <p>Using your selection with surrounding note context.</p>
                   <blockquote className="selection-excerpt">
                     {diagramSelection}
                   </blockquote>
@@ -1274,6 +1265,10 @@ export default function NoteView({
                   Using the current note: <strong>{draft.title}</strong>
                 </p>
               )}
+              <p className="small muted">
+                Images need Extract using AI first. Nothing is added until you
+                accept the draft.
+              </p>
               <details>
                 <summary>Include other notes (optional)</summary>
                 {data.notes
@@ -1392,7 +1387,7 @@ export default function NoteView({
         </Modal>
       )}
       {modal === "share" && (
-        <Modal title="Collaborators" onClose={() => setModal("")}>
+        <Modal title="Share" onClose={() => setModal("")}>
           <Collaborators
             note={draft}
             notify={notify}
@@ -1409,17 +1404,7 @@ export default function NoteView({
       )}
       {modal === "history" && (
         <Modal title="Local version history" wide onClose={() => setModal("")}>
-          <p className="muted">
-            Every replaced version is preserved. Copy text from an earlier
-            version into the editor to restore selected content.
-          </p>
-          {history.map((h) => (
-            <details key={h.name}>
-              <summary>Revision {h.name.split("-")[0]}</summary>
-              <pre className="history-text">{h.markdown}</pre>
-            </details>
-          ))}
-          {!history.length && <p>No previous versions yet.</p>}
+          <PageHistory entries={history} current={draft} onRestore={edit} />
         </Modal>
       )}
       {modal === "archive" && (

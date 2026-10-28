@@ -404,6 +404,7 @@ describe("source review and learning", () => {
   });
   it("keeps a generated flowchart pending until accepted", async () => {
     vi.spyOn(app.providers, "json").mockResolvedValue({
+      type: "flowchart", rationale: "A sequence from query to vector.",
       nodes: [
         { id: "a", label: "Query" },
         { id: "b", label: "Vector" },

@@ -179,6 +179,7 @@ export function Collaborators({
   onOpenShared: () => void;
   notify: (text: string) => void;
 }) {
+  const [tab, setTab] = useState<"people" | "link">("people");
   const [members, setMembers] = useState<{ email: string; role: string }[]>([]),
     [email, setEmail] = useState(""),
     [role, setRole] = useState("editor"),
@@ -219,70 +220,93 @@ export function Collaborators({
     }
   }
   return (
-    <>
-      <p>
-        Add someone's Google account email. They open the page from Shared with
-        you, without an access link.
-      </p>
-      <p className="muted small">
-        Your PC must stay awake with Synapse open. This shares this page and its
-        attached files, and replaces older access links for this page.
-      </p>
-      {error && (
-        <p role="alert" className="error-banner">
-          {error} Open Shared with you to sign in.
-        </p>
-      )}
-      <div className="invite-controls">
-        <input
-          aria-label="Collaborator email"
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <select
-          aria-label="Collaborator permission"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-        >
-          <option value="editor">Can edit</option>
-          <option value="viewer">Can view</option>
-        </select>
+    <div className="share-simple">
+      <div className="share-tabs" role="tablist" aria-label="Sharing mode">
         <button
-          className="primary"
-          disabled={busy || !email.trim() || !!error}
-          onClick={() => change(email.trim(), role)}
+          role="tab"
+          aria-selected={tab === "people"}
+          onClick={() => setTab("people")}
         >
-          Add
+          People
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "link"}
+          onClick={() => setTab("link")}
+        >
+          View link
         </button>
       </div>
-      <div className="collaborator-list">
-        {members.map((m) => (
-          <div key={m.email}>
-            <span>{m.email}</span>
+      {tab === "link" ? (
+        <ViewLink note={note} />
+      ) : (
+        <>
+          <p className="muted small">
+            Invite by Google email. Keep Synapse open for live editing.
+          </p>
+          {error && (
+            <p role="alert" className="error-banner">
+              {error} Open Shared with you to sign in.
+            </p>
+          )}
+          <div className="invite-controls">
+            <input
+              aria-label="Collaborator email"
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
             <select
-              aria-label={"Access for " + m.email}
-              value={m.role}
-              disabled={busy}
-              onChange={(e) => change(m.email, e.target.value)}
+              aria-label="Collaborator permission"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
             >
               <option value="editor">Can edit</option>
               <option value="viewer">Can view</option>
             </select>
             <button
-              disabled={busy}
-              onClick={() => change(m.email, m.role, true)}
+              className="primary"
+              disabled={busy || !email.trim() || !!error}
+              onClick={() => change(email.trim(), role)}
             >
-              Remove
+              Add
             </button>
           </div>
-        ))}
-      </div>
-      {members.length > 0 && (
-        <button onClick={onOpenShared}>Open live editing</button>
+          <div className="collaborator-list">
+            {members.map((m) => (
+              <div key={m.email}>
+                <span>{m.email}</span>
+                <select
+                  aria-label={"Access for " + m.email}
+                  value={m.role}
+                  disabled={busy}
+                  onChange={(e) => change(m.email, e.target.value)}
+                >
+                  <option value="editor">Can edit</option>
+                  <option value="viewer">Can view</option>
+                </select>
+                <button
+                  disabled={busy}
+                  onClick={() => change(m.email, m.role, true)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          {members.length > 0 && (
+            <button onClick={onOpenShared}>Open live editing</button>
+          )}
+          <details className="share-details">
+            <summary>How access works</summary>
+            <p>
+              This page and its attached files appear in Shared with you. Adding
+              people replaces older access links for this page.
+            </p>
+          </details>
+        </>
       )}
-      <ViewLink note={note} />
-    </>
+    </div>
   );
 }

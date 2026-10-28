@@ -126,6 +126,7 @@ it("prevents page lineage cycles and preserves children of archived parents", as
 it("generates from the selected excerpt and inserts a real transparent editable SVG only after approval", async () => {
   const n = await note("Private extra detail.");
   const generate = vi.spyOn(app.providers, "json").mockResolvedValue({
+    type: "flowchart", rationale: "A retrieval sequence.",
     nodes: [
       { id: "a", label: "Question", kind: "terminal" },
       { id: "b", label: "Retrieve", kind: "step" },
@@ -139,7 +140,7 @@ it("generates from the selected excerpt and inserts a real transparent editable 
   });
   expect(proposed.status).toBe(200);
   expect(generate.mock.calls[0][1]).toContain("Question retrieves");
-  expect(generate.mock.calls[0][1]).not.toContain("Private extra detail");
+  expect(generate.mock.calls[0][1]).toContain("Private extra detail");
   expect((await app.vault.note(n.id)).drawings).toEqual([]);
   const accepted = await owner(
     "post",

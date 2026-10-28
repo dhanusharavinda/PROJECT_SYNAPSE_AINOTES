@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import React from "react";
 import { it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, fireEvent, screen, cleanup } from "@testing-library/react";
+import {
+  render,
+  fireEvent,
+  screen,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import NotebookSheet from "../src/NotebookSheet";
 vi.mock("../src/RichEditor", () => ({ default: () => null }));
 beforeEach(() => {
@@ -32,7 +38,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-it("zooms only with Ctrl/Meta scroll and pans with the middle mouse without creating objects", () => {
+it("zooms only with Ctrl/Meta scroll and pans with the middle mouse without creating objects", async () => {
   const change = vi.fn();
   const { container } = render(
     <NotebookSheet
@@ -49,7 +55,7 @@ it("zooms only with Ctrl/Meta scroll and pans with the middle mouse without crea
   fireEvent.wheel(scroll, { deltaY: -100 });
   expect(sheet.style.zoom).toBe("1");
   fireEvent.wheel(scroll, { deltaY: -100, ctrlKey: true });
-  expect(Number(sheet.style.zoom)).toBeGreaterThan(1);
+  await waitFor(() => expect(Number(sheet.style.zoom)).toBeGreaterThan(1));
   expect(
     screen.getByRole("button", { name: "Reset canvas zoom" }).textContent,
   ).not.toBe("100%");
@@ -103,4 +109,124 @@ it("exposes drag, rotate, resize and delete for a video selected from its thumbn
   expect(screen.getByLabelText("Resize object")).toBeTruthy();
   fireEvent.click(screen.getByLabelText("Delete selected objects"));
   expect(change.mock.calls.at(-1)![0].items).toHaveLength(0);
+});
+it("coalesces a wheel burst into one anchored zoom and normalizes line units", async () => {
+  const change = vi.fn();
+  const { container } = render(
+    <NotebookSheet
+      value={{ width: 1000, height: 1400, items: [] }}
+      onChange={change}
+      onDrawing={() => {}}
+      onImage={() => {}}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  const scroll = container.querySelector<HTMLElement>(".sheet-scroll")!;
+  const sheet = screen.getByRole("group", {
+    name: "Write and draw on this page",
+  });
+  scroll.scrollLeft = 200;
+  scroll.scrollTop = 150;
+  sheet.getBoundingClientRect = () => ({
+    left: 20 - scroll.scrollLeft,
+    top: 50 - scroll.scrollTop,
+    width: 1000 * Number(sheet.style.zoom),
+    height: 1400 * Number(sheet.style.zoom),
+    right: 0,
+    bottom: 0,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+  fireEvent.wheel(scroll, {
+    deltaY: -1,
+    deltaMode: 1,
+    ctrlKey: true,
+    clientX: 320,
+    clientY: 250,
+  });
+  fireEvent.wheel(scroll, {
+    deltaY: -1,
+    deltaMode: 1,
+    ctrlKey: true,
+    clientX: 320,
+    clientY: 250,
+  });
+  await waitFor(() =>
+    expect(Number(sheet.style.zoom)).toBeCloseTo(Math.exp(32 * 0.0015)),
+  );
+  const scale = Number(sheet.style.zoom);
+  expect(scroll.scrollLeft).toBeCloseTo(500 * scale - 300);
+  expect(scroll.scrollTop).toBeCloseTo(350 * scale - 200);
+  expect(change).not.toHaveBeenCalled();
+});
+it("offers symbolic arrows from the arrow tool without a separate text dropdown", () => {
+  render(
+    <NotebookSheet onChange={() => {}} onDrawing={() => {}} onImage={() => {}}>
+      <p />
+    </NotebookSheet>,
+  );
+  expect(screen.queryByRole("combobox", { name: "Arrow type" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Arrow tool" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Curved arrow" }));
+  expect(
+    screen
+      .getByRole("button", { name: "Arrow tool" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(screen.queryByRole("menu", { name: "Arrow variants" })).toBeNull();
+});
+it("pins selected content for Practice and keeps Study lens transient", () => {
+  const change = vi.fn();
+  const { container } = render(
+    <NotebookSheet
+      value={{
+        width: 1000,
+        height: 800,
+        items: [
+          {
+            id: "one",
+            kind: "image",
+            src: "../attachments/example.png",
+            x: 10,
+            y: 10,
+            width: 100,
+            height: 100,
+            fitted: true,
+          },
+          {
+            id: "two",
+            kind: "rectangle",
+            x: 200,
+            y: 10,
+            width: 100,
+            height: 100,
+          },
+        ],
+      }}
+      onChange={change}
+      onDrawing={() => {}}
+      onImage={() => {}}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  const first = container.querySelector('[data-object-id="one"]')!;
+  fireEvent.contextMenu(first, { clientX: 300, clientY: 300 });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Study" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pin as uncertain" }));
+  expect(change.mock.calls.at(-1)![0].items[0].uncertain).toBe(true);
+  const count = change.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "Study lens" }));
+  expect(
+    container
+      .querySelector('[data-object-id="two"]')
+      ?.classList.contains("is-lens-dimmed"),
+  ).toBe(true);
+  expect(change).toHaveBeenCalledTimes(count);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove uncertainty pin" }),
+  );
+  expect(change.mock.calls.at(-1)![0].items[0].uncertain).toBe(false);
 });

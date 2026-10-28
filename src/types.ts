@@ -33,6 +33,7 @@ export interface CanvasItem {
   rotation?: number;
   arrowStyle?: "straight" | "curved" | "elbow" | "double";
   textScale?: number;
+  uncertain?: boolean;
 }
 export interface NoteCanvas {
   items: CanvasItem[];
@@ -93,11 +94,11 @@ export interface Proposal {
   layers?: Record<Layer, string>;
   diagram?: {
     title?: string;
-    type?: "flowchart" | "hierarchy" | "concept-map";
+    type?: "flowchart" | "hierarchy" | "concept-map" | "architecture" | "data-flow" | "state-machine";
     nodes: {
       id: string;
       label: string;
-      kind?: "step" | "decision" | "terminal" | "concept";
+      kind?: "step" | "decision" | "terminal" | "concept" | "component" | "store";
     }[];
     edges: { from: string; to: string; label: string }[];
   };

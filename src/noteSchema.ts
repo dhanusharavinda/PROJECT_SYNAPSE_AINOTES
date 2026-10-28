@@ -99,6 +99,7 @@ export const noteSchema = z.object({
               .enum(["straight", "curved", "elbow", "double"])
               .optional(),
             textScale: z.number().min(0.2).max(20).optional(),
+            uncertain: z.boolean().optional(),
             pressures: z
               .array(z.number().finite().min(0.7).max(1.3))
               .max(15000)

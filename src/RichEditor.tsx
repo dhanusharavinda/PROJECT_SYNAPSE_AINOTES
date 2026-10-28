@@ -46,6 +46,7 @@ import { copyText, readClipboard } from "./clipboard";
 import { repairNotebookMarkup } from "./content";
 import { youtubeLink } from "./youtube";
 import VideoPasteMenu from "./VideoPasteMenu";
+import RadialMenu from "./RadialMenu";
 import { AlignedParagraph, RenumberLists } from "./writingExtensions";
 const editorDisplay = (text: string) =>
   displayMarkdown(repairNotebookMarkup(text)).replace(
@@ -125,7 +126,7 @@ const commandInfo = [
   ["image", "Upload image", ImagePlus],
   ["file", "Upload PDF or file", FilePlus2],
   ["draw", "Draw on page", PenLine],
-  ["flowchart", "Make a flowchart", Workflow],
+  ["flowchart", "Make a diagram", Workflow],
   ["diagram", "Diagram selected text or notes", Workflow],
   ["quote", "Quote", Quote],
   ["divider", "Divider", Minus],
@@ -179,7 +180,11 @@ const Editor = forwardRef<
   const currentValue = useRef(value);
   currentValue.current = value;
   const [raw, setRaw] = useState(false);
-  const [context, setContext] = useState<{ x: number; y: number }>();
+  const [context, setContext] = useState<{
+    x: number;
+    y: number;
+    keyboard?: boolean;
+  }>();
   const [videoPaste, setVideoPaste] = useState<{
     url: string;
     x: number;
@@ -843,6 +848,23 @@ const Editor = forwardRef<
   return (
     <div
       className={"editor-wrap" + (compact ? " compact-editor" : "")}
+      onKeyDownCapture={(e) => {
+        if (
+          !readOnly &&
+          (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          capture();
+          setMediaTarget(undefined);
+          const r = e.currentTarget.getBoundingClientRect();
+          setContext({
+            x: r.left + Math.min(r.width / 2, 300),
+            y: Math.max(200, r.top + 100),
+            keyboard: true,
+          });
+        }
+      }}
       onContextMenu={(e) => {
         if (readOnly) return;
         e.preventDefault();
@@ -860,8 +882,9 @@ const Editor = forwardRef<
         }
         capture();
         setContext({
-          x: Math.min(e.clientX, window.innerWidth - 320),
-          y: Math.min(e.clientY, window.innerHeight - 500),
+          x: e.clientX,
+          y: e.clientY,
+          keyboard: e.clientX === 0 && e.clientY === 0,
         });
       }}
       onClick={(e) => {
@@ -1136,17 +1159,12 @@ const Editor = forwardRef<
       )}
       {context &&
         createPortal(
-          <div
-            role="menu"
-            aria-label="Edit selected content"
-            className={"context-menu" + (mediaTarget ? " is-media" : "")}
-            style={{
-              left: Math.max(8, context.x),
-              top: Math.max(8, context.y),
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.preventDefault()}
-            onWheel={(e) => e.stopPropagation()}
+          <RadialMenu
+            x={context.x}
+            y={context.y}
+            keyboard={context.keyboard}
+            label="Edit selected content"
+            onClose={() => setContext(undefined)}
           >
             {mediaTarget && (
               <div className="context-media-actions">
@@ -1463,7 +1481,7 @@ const Editor = forwardRef<
                   <small>/{cmd}</small>
                 </button>
               ))}
-          </div>,
+          </RadialMenu>,
           document.body,
         )}
     </div>

@@ -1,16 +1,30 @@
 import { z } from "zod";
+export const diagramTypes = [
+  "flowchart",
+  "hierarchy",
+  "concept-map",
+  "architecture",
+  "data-flow",
+  "state-machine",
+] as const;
+export const diagramKinds = [
+  "step",
+  "decision",
+  "terminal",
+  "concept",
+  "component",
+  "store",
+] as const;
 export const diagramSchema = z
   .object({
     title: z.string().max(160).optional(),
-    type: z.enum(["flowchart", "hierarchy", "concept-map"]).optional(),
+    type: z.enum(diagramTypes).optional(),
     nodes: z
       .array(
         z.object({
           id: z.string().min(1).max(30),
           label: z.string().trim().min(1).max(65),
-          kind: z
-            .enum(["step", "decision", "terminal", "concept"])
-            .default("step"),
+          kind: z.enum(diagramKinds).default("step"),
         }),
       )
       .min(2)
@@ -55,5 +69,17 @@ export const diagramSchema = z
       ctx.addIssue({
         code: "custom",
         message: "Connect each idea to the diagram, or remove unrelated nodes.",
+      });
+    if (
+      d.edges.some(
+        (edge) =>
+          !edge.label.trim() &&
+          (d.type === "state-machine" ||
+            d.nodes.find((node) => node.id === edge.from)?.kind === "decision"),
+      )
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Label each decision branch and state transition.",
       });
   });

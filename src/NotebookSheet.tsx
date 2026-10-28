@@ -2,6 +2,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -32,7 +33,11 @@ import {
   Moon,
   FileText,
   RotateCw,
+  Focus,
+  Pin,
+  MoreHorizontal,
 } from "lucide-react";
+import RadialMenu from "./RadialMenu";
 import { regionOnSheet } from "./paintBucket";
 import { penWeight } from "./penStroke";
 import type { CanvasItem, NoteCanvas } from "./types";
@@ -140,8 +145,14 @@ export default forwardRef<
     [selected, setSelected] = useState<string[]>([]),
     [color, setColor] = useState("#24392f"),
     [size, setSize] = useState(2.4);
-  const [menu, setMenu] = useState<{ x: number; y: number }>(),
+  const [menu, setMenu] = useState<{
+      x: number;
+      y: number;
+      keyboard?: boolean;
+    }>(),
     [shapes, setShapes] = useState(false),
+    [arrows, setArrows] = useState(false),
+    [studyLens, setStudyLens] = useState(false),
     [resizing, setResizing] = useState(false),
     [activeGesture, setActiveGesture] = useState(false),
     [marquee, setMarquee] = useState<{
@@ -175,30 +186,73 @@ export default forwardRef<
   >(undefined);
   const [arrowStyle, setArrowStyle] =
     useState<NonNullable<CanvasItem["arrowStyle"]>>("straight");
+  const zoomFrame = useRef<number | undefined>(undefined);
+  const wheelBatch = useRef<
+    { delta: number; x: number; y: number } | undefined
+  >(undefined);
+  const zoomAnchor = useRef<
+    { x: number; y: number; logicalX: number; logicalY: number } | undefined
+  >(undefined);
+  useLayoutEffect(() => {
+    zoomRef.current = zoom;
+    const anchor = zoomAnchor.current,
+      el = scroller.current,
+      page = root.current;
+    if (anchor && el && page) {
+      const rect = page.getBoundingClientRect();
+      el.scrollLeft += rect.left + anchor.logicalX * zoom - anchor.x;
+      el.scrollTop += rect.top + anchor.logicalY * zoom - anchor.y;
+      zoomAnchor.current = undefined;
+    }
+  }, [zoom]);
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      if (gesture.current) return;
-      const rect = el.getBoundingClientRect();
-      const x = event.clientX - rect.left,
-        y = event.clientY - rect.top;
-      const old = zoomRef.current;
-      const next = Math.max(
-        0.25,
-        Math.min(3, old * Math.exp(-event.deltaY * 0.002)),
-      );
-      zoomRef.current = next;
-      setZoom(next);
-      requestAnimationFrame(() => {
-        el.scrollLeft = ((el.scrollLeft + x) * next) / old - x;
-        el.scrollTop = ((el.scrollTop + y) * next) / old - y;
+      if (gesture.current || pan.current) return;
+      const unit =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? Math.max(200, el.clientHeight)
+            : 1;
+      const delta = Math.max(-120, Math.min(120, event.deltaY * unit));
+      wheelBatch.current = {
+        delta: (wheelBatch.current?.delta || 0) + delta,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      if (zoomFrame.current !== undefined) return;
+      zoomFrame.current = requestAnimationFrame(() => {
+        zoomFrame.current = undefined;
+        const batch = wheelBatch.current,
+          page = root.current;
+        wheelBatch.current = undefined;
+        if (!batch || !page) return;
+        const old = zoomRef.current;
+        const next = Math.max(
+          0.25,
+          Math.min(3, old * Math.exp(-batch.delta * 0.0015)),
+        );
+        if (next === old) return;
+        const rect = page.getBoundingClientRect();
+        zoomAnchor.current = {
+          x: batch.x,
+          y: batch.y,
+          logicalX: (batch.x - rect.left) / old,
+          logicalY: (batch.y - rect.top) / old,
+        };
+        setZoom(next);
       });
     };
     el.addEventListener("wheel", wheel, { passive: false });
-    return () => el.removeEventListener("wheel", wheel);
+    return () => {
+      el.removeEventListener("wheel", wheel);
+      if (zoomFrame.current !== undefined)
+        cancelAnimationFrame(zoomFrame.current);
+    };
   }, []);
   const [theme, setTheme] = useState(
     document.documentElement.dataset.theme || "light",
@@ -253,12 +307,12 @@ export default forwardRef<
     )?.editor;
   }
   useEffect(() => {
-    if (!root.current) return;
+    if (!scroller.current) return;
     const observer = new ResizeObserver(() =>
-      setViewWidth(root.current?.clientWidth || 1000),
+      setViewWidth(scroller.current?.clientWidth || 1000),
     );
-    observer.observe(root.current);
-    setViewWidth(root.current.clientWidth || 1000);
+    observer.observe(scroller.current);
+    setViewWidth(scroller.current.clientWidth || 1000);
     return () => observer.disconnect();
   }, []);
   const paint = useRef<number | undefined>(undefined),
@@ -593,6 +647,7 @@ export default forwardRef<
     setTool(next);
     setMenu(undefined);
     setShapes(false);
+    setArrows(false);
     setSelected([]);
     setResizing(false);
     focus();
@@ -1203,59 +1258,97 @@ export default forwardRef<
       />
       <div className="sheet-toolbar" role="toolbar" aria-label="Notebook tools">
         <div className="sheet-tool-group">
-          <select
-            aria-label="Arrow type"
-            value={arrowStyle}
-            onChange={(e) => {
-              const style = e.target.value as NonNullable<
-                CanvasItem["arrowStyle"]
-              >;
-              setArrowStyle(style);
-              if (
-                latest.current.items.some(
-                  (i) => selected.includes(i.id) && i.kind === "arrow",
-                )
-              )
-                commit({
-                  ...latest.current,
-                  items: latest.current.items.map((i) =>
-                    selected.includes(i.id) && i.kind === "arrow"
-                      ? { ...i, arrowStyle: style }
-                      : i,
-                  ),
-                });
-              else choose("arrow");
-            }}
-          >
-            <option value="straight">Straight arrow</option>
-            <option value="curved">Curved arrow</option>
-            <option value="elbow">Elbow arrow</option>
-            <option value="double">Double arrow</option>
-          </select>
           <button
             aria-label="Reset canvas zoom"
             title="Ctrl+scroll to zoom. Middle mouse to pan."
             onClick={() => {
+              if (zoomFrame.current !== undefined)
+                cancelAnimationFrame(zoomFrame.current);
+              zoomFrame.current = undefined;
+              wheelBatch.current = undefined;
+              zoomAnchor.current = undefined;
               setZoom(1);
-              zoomRef.current = 1;
             }}
           >
             {Math.round(zoom * 100)}%
           </button>
-          {tools.map(([id, label, Icon]) => (
-            <button
-              key={id}
-              aria-label={label + " tool"}
-              title={label}
-              aria-pressed={tool === id}
-              onClick={() => {
-                if (id === "pen") setHighlighter(false);
-                choose(id);
-              }}
-            >
-              <Icon size={17} />
-            </button>
-          ))}
+          {tools.map(([id, label, Icon]) =>
+            id === "arrow" ? (
+              <div className="arrow-picker" key={id}>
+                <button
+                  aria-label="Arrow tool"
+                  title="Arrow variants"
+                  aria-pressed={tool === "arrow"}
+                  aria-haspopup="menu"
+                  aria-expanded={arrows}
+                  onClick={() => {
+                    if (!selectedItems.some((i) => i.kind === "arrow"))
+                      choose("arrow");
+                    setArrows(!arrows);
+                  }}
+                >
+                  <ArrowSymbol kind={arrowStyle} />
+                  <ChevronDown size={8} />
+                </button>
+                {arrows && (
+                  <div
+                    className="arrow-choices"
+                    role="menu"
+                    aria-label="Arrow variants"
+                  >
+                    {(["straight", "curved", "elbow", "double"] as const).map(
+                      (style) => (
+                        <button
+                          key={style}
+                          role="menuitem"
+                          aria-label={
+                            style.charAt(0).toUpperCase() +
+                            style.slice(1) +
+                            " arrow"
+                          }
+                          title={style + " arrow"}
+                          onClick={() => {
+                            setArrowStyle(style);
+                            setArrows(false);
+                            if (
+                              latest.current.items.some(
+                                (i) =>
+                                  selected.includes(i.id) && i.kind === "arrow",
+                              )
+                            )
+                              commit({
+                                ...latest.current,
+                                items: latest.current.items.map((i) =>
+                                  selected.includes(i.id) && i.kind === "arrow"
+                                    ? { ...i, arrowStyle: style }
+                                    : i,
+                                ),
+                              });
+                            else choose("arrow");
+                          }}
+                        >
+                          <ArrowSymbol kind={style} />
+                        </button>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                key={id}
+                aria-label={label + " tool"}
+                title={label}
+                aria-pressed={tool === id}
+                onClick={() => {
+                  if (id === "pen") setHighlighter(false);
+                  choose(id);
+                }}
+              >
+                <Icon size={17} />
+              </button>
+            ),
+          )}
           <button
             aria-label="Delete selected objects"
             title="Delete selection"
@@ -1352,6 +1445,28 @@ export default forwardRef<
           </button>
         </div>
         <div className="sheet-tool-group">
+          <button
+            aria-label="More canvas actions"
+            title="More actions"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({
+                x: r.left,
+                y: r.bottom + 180,
+                keyboard: e.detail === 0,
+              });
+            }}
+          >
+            <MoreHorizontal size={16} />
+          </button>
+          <button
+            aria-label="Study lens"
+            title="Study lens: focus selected objects"
+            aria-pressed={studyLens}
+            onClick={() => setStudyLens(!studyLens)}
+          >
+            <Focus size={16} />
+          </button>
           <button
             aria-label={`Theme: ${theme}. Switch theme`}
             title="Switch theme: Light, Dark, Paper, Dotted"
@@ -1502,6 +1617,7 @@ export default forwardRef<
           className={`notebook-sheet-content tool-${tool}${activeGesture ? " is-gesturing" : ""}`}
           style={{
             zoom,
+            width: Math.max(scene.width || 0, viewWidth),
             minWidth: scene.width || undefined,
             minHeight: Math.max(500, scene.height),
           }}
@@ -1528,6 +1644,21 @@ export default forwardRef<
             if (root.current?.hasPointerCapture(e.pointerId))
               root.current.releasePointerCapture(e.pointerId);
           }}
+          onKeyDown={(e) => {
+            if (
+              (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) &&
+              !(e.target as HTMLElement).closest(".editor-wrap")
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({
+                x: r.left + Math.min(r.width / 2, 300),
+                y: Math.max(200, r.top + 150),
+                keyboard: true,
+              });
+            }
+          }}
           onFocus={() => {
             active.current = true;
           }}
@@ -1541,8 +1672,9 @@ export default forwardRef<
             e.stopPropagation();
             focus();
             setMenu({
-              x: Math.max(8, Math.min(e.clientX, innerWidth - 250)),
-              y: Math.max(8, Math.min(e.clientY, innerHeight - 380)),
+              x: e.clientX,
+              y: e.clientY,
+              keyboard: e.clientX === 0 && e.clientY === 0,
             });
           }}
           onPaste={(event) => {
@@ -1572,12 +1704,17 @@ export default forwardRef<
             )?.dataset.objectId;
             if (id && !selected.includes(id)) setSelected([id]);
             setMenu({
-              x: Math.max(8, Math.min(e.clientX, innerWidth - 250)),
-              y: Math.max(8, Math.min(e.clientY, innerHeight - 380)),
+              x: e.clientX,
+              y: e.clientY,
+              keyboard: e.clientX === 0 && e.clientY === 0,
             });
           }}
         >
-          <div className="sheet-prose">{children}</div>
+          <div
+            className={`sheet-prose${studyLens && selected.length ? " is-lens-dimmed" : ""}`}
+          >
+            {children}
+          </div>
           {scene.items.map((i, index) => {
             const shape = shapeKinds.includes(i.kind);
             const peer = peers.find((p) => p.cell === "item/" + i.id);
@@ -1587,7 +1724,7 @@ export default forwardRef<
                 data-object-id={i.id}
                 data-rotation={i.rotation || 0}
                 data-peer-name={peer?.name}
-                className={`sheet-object ${peer ? "has-peer " : ""}kind-${i.kind}${selected.includes(i.id) ? " is-selected" : ""}${resizing && selected.includes(i.id) ? " is-resizing" : ""}`}
+                className={`sheet-object ${studyLens && selected.length ? (selected.includes(i.id) ? "is-lens-focused " : "is-lens-dimmed ") : ""}${peer ? "has-peer " : ""}kind-${i.kind}${selected.includes(i.id) ? " is-selected" : ""}${resizing && selected.includes(i.id) ? " is-resizing" : ""}`}
                 style={
                   {
                     "--peer-color": peer?.color,
@@ -1621,6 +1758,16 @@ export default forwardRef<
                 }
                 onPointerDown={(e) => objectDown(e, i)}
               >
+                {i.uncertain && (
+                  <button
+                    className="object-uncertainty"
+                    aria-label="Remove uncertainty pin"
+                    title="Uncertain, review in Practice"
+                    onClick={() => update(i.id, { uncertain: false })}
+                  >
+                    <Pin size={13} />
+                  </button>
+                )}
                 {selected.includes(i.id) && !activeGesture && (
                   <button
                     className="object-grip"
@@ -1786,14 +1933,68 @@ export default forwardRef<
         More paper
       </button>
       {menu && (
-        <div
-          className="sheet-context context-menu"
-          role="menu"
-          aria-label="Page actions"
-          style={{ left: menu.x, top: menu.y }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onWheel={(e) => e.stopPropagation()}
+        <RadialMenu
+          x={menu.x}
+          y={menu.y}
+          keyboard={menu.keyboard}
+          onClose={() => setMenu(undefined)}
         >
+          <button data-menu-group="Select" onClick={() => choose("write")}>
+            Write cursor
+          </button>
+          <button data-menu-group="Select" onClick={() => choose("select")}>
+            Select objects
+          </button>
+          <button
+            data-menu-group="Connect"
+            disabled={!onCommand}
+            onClick={() => {
+              onCommand?.("page");
+              setMenu(undefined);
+            }}
+          >
+            New page
+          </button>
+          <button
+            data-menu-group="Connect"
+            disabled={!onCommand}
+            onClick={() => {
+              onCommand?.("link");
+              setMenu(undefined);
+            }}
+          >
+            Link a note
+          </button>
+          <button
+            data-menu-group="Study"
+            aria-pressed={studyLens}
+            onClick={() => {
+              setStudyLens(!studyLens);
+              setMenu(undefined);
+            }}
+          >
+            {studyLens ? "Exit study lens" : "Study lens"}
+          </button>
+          {!!selected.length && (
+            <button
+              data-menu-group="Study"
+              onClick={() => {
+                const uncertain = !selectedItems.every((i) => i.uncertain);
+                commit({
+                  ...latest.current,
+                  items: latest.current.items.map((i) =>
+                    selected.includes(i.id) ? { ...i, uncertain } : i,
+                  ),
+                });
+                setMenu(undefined);
+              }}
+            >
+              {selectedItems.every((i) => i.uncertain)
+                ? "Remove uncertainty pins"
+                : "Pin as uncertain"}
+            </button>
+          )}
+
           {item?.kind === "image" && (
             <button
               role="menuitem"
@@ -1912,13 +2113,71 @@ export default forwardRef<
           >
             Paste objects <small>Ctrl+V</small>
           </button>
-          <button role="menuitem" onClick={() => choose("text")}>
+          <button
+            data-menu-group="Insert"
+            role="menuitem"
+            onClick={() => choose("text")}
+          >
             Write here
           </button>
-          <button role="menuitem" onClick={() => choose("pen")}>
+          <button
+            data-menu-group="Draw"
+            role="menuitem"
+            onClick={() => choose("pen")}
+          >
             Pen
           </button>
-          <button role="menuitem" onClick={() => choose("eraser")}>
+          <button data-menu-group="Draw" onClick={() => choose("bucket")}>
+            Paint bucket
+          </button>
+          <button
+            data-menu-group="Draw"
+            onClick={() => {
+              choose("pen");
+              setHighlighter(true);
+              setColor("#ff1493");
+              setSize(18);
+            }}
+          >
+            Pink highlighter
+          </button>
+          <button
+            data-menu-group="Draw"
+            onClick={() => {
+              choose("pen");
+              setHighlighter(true);
+              setColor("#39ff14");
+              setSize(18);
+            }}
+          >
+            Green highlighter
+          </button>
+          {shapeTools.map(([id, label, Icon]) => (
+            <button key={id} data-menu-group="Draw" onClick={() => choose(id)}>
+              <Icon size={17} />
+              {label}
+            </button>
+          ))}
+          <button data-menu-group="Draw" onClick={() => choose("arrow")}>
+            Arrow
+          </button>
+          <button
+            data-menu-group="Insert"
+            onClick={() => {
+              setMenu(undefined);
+              onImage();
+            }}
+          >
+            Add image
+          </button>
+          <button data-menu-group="Insert" onClick={() => choose("table")}>
+            Add table
+          </button>
+          <button
+            data-menu-group="Draw"
+            role="menuitem"
+            onClick={() => choose("eraser")}
+          >
             Eraser
           </button>
           <button
@@ -1928,7 +2187,7 @@ export default forwardRef<
               setMenu(undefined);
             }}
           >
-            Make flowchart
+            Make diagram
           </button>
           <button
             role="menuitem"
@@ -1950,8 +2209,38 @@ export default forwardRef<
           >
             Redo <small>Ctrl+Shift+Z</small>
           </button>
-        </div>
+        </RadialMenu>
       )}
     </section>
   );
 });
+
+function ArrowSymbol({
+  kind,
+}: {
+  kind: NonNullable<CanvasItem["arrowStyle"]>;
+}) {
+  return (
+    <svg
+      width="19"
+      height="19"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.65"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {kind === "curved" ? (
+        <path d="M4 20 Q4 4 20 4" />
+      ) : kind === "elbow" ? (
+        <path d="M4 20 V4 H20" />
+      ) : (
+        <path d="M4 20 20 4" />
+      )}
+      <path d="M13 4h7v7" />
+      {kind === "double" && <path d="M4 13v7h7" />}
+    </svg>
+  );
+}

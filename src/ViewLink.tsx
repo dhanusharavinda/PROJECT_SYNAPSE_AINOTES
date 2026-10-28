@@ -13,12 +13,17 @@ export default function ViewLink({ note }: { note: Note }) {
   }, [note.id]);
   return (
     <section className="view-link-panel">
-      <h3>Read-only link</h3>
-      <p>
-        A saved copy anyone with the full link can view for 7 days, even when
-        your PC is off. Changes need a new link. Attached files are included, up
-        to 2 MB. Sign in first.
+      <p className="muted small">
+        Share a read-only copy. Anyone with the link can view it for 7 days.
       </p>
+      <details className="share-details">
+        <summary>What gets shared</summary>
+        <p>
+          A saved copy of this page and attached files up to 2 MB, available
+          even when your PC is off. Changes need a new link. Sign in to create
+          one. A recipient can save or forward their copy.
+        </p>
+      </details>
       {error && <p role="alert">{error}</p>}
       <button
         disabled={busy}

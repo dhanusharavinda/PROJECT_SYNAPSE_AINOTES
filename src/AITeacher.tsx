@@ -39,7 +39,7 @@ export default function AITeacher({ notes }: { notes: Note[] }) {
   }
   return (
     <details className="ai-teacher">
-      <summary>AI teacher, practise selected notes</summary>
+      <summary>Ask AI teacher</summary>
       <p>
         Pick up to ten notes. Try recalling the answer before asking for a hint.
         Requests use your configured AI provider.

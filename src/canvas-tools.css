@@ -1,0 +1,287 @@
+/* Canvas controls share the notebook's ink and paper tokens. */
+.notebook-sheet .sheet-toolbar {
+  gap: 12px;
+  padding: 7px 9px;
+}
+.notebook-sheet .sheet-tool-group {
+  gap: 3px;
+}
+.notebook-sheet .sheet-toolbar button {
+  min-width: 30px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 6px;
+}
+.notebook-sheet .sheet-toolbar button > span {
+  display: none;
+}
+.notebook-sheet .sheet-toolbar .font-cycle {
+  font-family: var(--note-font, serif);
+}
+.notebook-sheet .sheet-toolbar input[type="range"] {
+  width: 65px;
+}
+.arrow-picker {
+  position: relative;
+  display: inline-flex;
+}
+.arrow-picker > button svg:last-child {
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+}
+.arrow-choices {
+  position: absolute;
+  display: flex;
+  padding: 5px;
+  top: 38px;
+  left: 0;
+  gap: 3px;
+  background: var(--surface, #fff);
+  box-shadow: 0 8px 28px #142b2526;
+  border-radius: 9px;
+  z-index: 60;
+}
+.notebook-sheet .arrow-choices button {
+  width: 36px;
+  height: 36px;
+}
+.notebook-sheet .shape-choices {
+  display: flex;
+  width: max-content;
+  min-width: 0;
+  gap: 3px;
+  padding: 5px;
+}
+.notebook-sheet .shape-choices button {
+  width: 36px;
+  font-size: 0;
+}
+.sheet-object.is-lens-dimmed,
+.sheet-prose.is-lens-dimmed {
+  opacity: 0.16;
+  transition: opacity 180ms ease-out;
+}
+.sheet-object.is-lens-focused {
+  transition: opacity 180ms ease-out;
+}
+.object-uncertainty {
+  position: absolute;
+  right: -8px;
+  top: -10px;
+  z-index: 15;
+  color: #b73544;
+  background: var(--surface, #fff);
+  border: 0;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+}
+.synapse-wheel.context-menu {
+  position: fixed;
+  width: 360px;
+  height: 360px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  z-index: 4000;
+  animation: wheel-arrive 180ms ease-out both;
+  transition: opacity 180ms ease-out;
+}
+.synapse-wheel.is-fading {
+  opacity: 0;
+  pointer-events: none;
+}
+.wheel-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: var(--surface, #fff);
+  box-shadow: 0 8px 25px #12231c1f;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.wheel-core > span {
+  max-width: 85px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--ink, #24392f);
+}
+.synapse-wheel .wheel-core button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+}
+.synapse-wheel .wheel-category,
+.synapse-wheel .wheel-action {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y)));
+  width: 48px;
+  height: 48px;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--surface, #fff);
+  color: var(--ink, #24392f);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 7px 20px #162b2224;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+.synapse-wheel .wheel-category span {
+  font-size: 11px;
+  line-height: 1;
+}
+.synapse-wheel .wheel-action {
+  width: 40px;
+  height: 40px;
+  animation: wheel-action-in 160ms ease-out both;
+}
+.synapse-wheel .wheel-action span {
+  display: none;
+}
+.synapse-wheel .wheel-category.active,
+.synapse-wheel button:hover {
+  background: var(--accent, #245344);
+  color: #fff;
+}
+.synapse-wheel button:focus-visible {
+  outline: 2px solid var(--accent, #245344);
+  outline-offset: 4px;
+}
+.synapse-wheel button:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+}
+.synapse-wheel .wheel-action[data-background] {
+  color: #24392f;
+}
+@keyframes wheel-arrive {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes wheel-action-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .synapse-wheel.context-menu {
+    left: 12px !important;
+    top: auto !important;
+    bottom: 12px;
+    transform: none;
+    width: calc(100vw - 24px);
+    height: auto;
+    max-height: 70dvh;
+    overflow: auto;
+    background: var(--surface, #fff);
+    border-radius: 16px;
+    box-shadow: 0 14px 60px #10231c33;
+    padding: 12px;
+  }
+  .wheel-core {
+    position: static;
+    transform: none;
+    width: auto;
+    height: 30px;
+    border-radius: 0;
+    box-shadow: none;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+  }
+  .wheel-core > span {
+    max-width: none;
+    font-size: 13px;
+  }
+  .wheel-groups,
+  .wheel-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .wheel-actions {
+    margin-top: 10px;
+  }
+  .synapse-wheel .wheel-category,
+  .synapse-wheel .wheel-action {
+    position: static;
+    transform: none;
+    width: 100%;
+    height: 58px;
+    border-radius: 8px;
+    box-shadow: none;
+    background: var(--bg, #f3f6f2);
+  }
+  .synapse-wheel .wheel-category span,
+  .synapse-wheel .wheel-action span {
+    display: block;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+    padding: 0 3px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .synapse-wheel,
+  .synapse-wheel *,
+  .sheet-object,
+  .sheet-prose {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .notebook-sheet .sheet-toolbar button[aria-label="Pink highlighter"],
+  .notebook-sheet .sheet-toolbar button[aria-label="Green highlighter"],
+  .notebook-sheet .sheet-toolbar button[aria-label="Text tool"],
+  .notebook-sheet .sheet-toolbar button[aria-label="Table tool"],
+  .notebook-sheet .sheet-toolbar button[aria-label="Add image to sheet"],
+  .notebook-sheet .sheet-toolbar .shape-picker {
+    display: none;
+  }
+  .notebook-sheet .sheet-toolbar {
+    gap: 6px;
+  }
+  .notebook-sheet .sheet-toolbar button {
+    min-width: 34px;
+    height: 36px;
+  }
+}

@@ -385,7 +385,7 @@ export default function App() {
               { id: "graph", label: "Knowledge Graph", Icon: Network },
               {
                 id: "review",
-                label: "Review",
+                label: "Practice",
                 Icon: Brain,
                 count: due || undefined,
               },

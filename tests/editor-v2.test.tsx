@@ -245,6 +245,7 @@ it("wraps selected text into optional variants while retaining surrounding writi
     screen.getByRole("textbox", { name: "Note explanation" }),
     { clientX: 160, clientY: 180 },
   );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Format" }));
   fireEvent.click(
     screen.getByRole("menuitem", { name: /Another explanation/ }),
   );

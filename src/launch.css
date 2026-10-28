@@ -1,0 +1,70 @@
+.synapse-launch {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f8f3;
+  color: #244735;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 280ms ease;
+  outline: none;
+}
+.launch-error { max-width: 480px; margin: 15vh auto; padding: 24px; color: var(--ink); }
+.launch-error p { line-height: 1.6; margin: 16px 0; }
+.synapse-launch.leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+.launch-colour {
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(ellipse at 35% 65%, #84ad7e85, transparent 48%),
+    radial-gradient(ellipse at 65% 35%, #bdd1b98c, transparent 50%);
+  filter: blur(35px);
+  animation: launch-drift 8s ease-in-out infinite alternate;
+}
+.launch-wordmark {
+  font:
+    500 clamp(36px, 5vw, 64px)/1.2 Lora,
+    Georgia,
+    serif;
+  letter-spacing: -0.035em;
+  z-index: 1;
+  animation: launch-name 850ms ease both;
+}
+.synapse-launch button {
+  position: absolute;
+  bottom: 40px;
+  border: 0;
+  background: transparent;
+  color: #31533d;
+  padding: 12px 18px;
+}
+@keyframes launch-drift {
+  to {
+    transform: translate(6%, -4%) rotate(12deg);
+  }
+}
+@keyframes launch-name {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-colour,
+  .launch-wordmark {
+    animation: none;
+  }
+  .synapse-launch {
+    transition: none;
+  }
+}
