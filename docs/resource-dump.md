@@ -1,6 +1,8 @@
 # Resource dump
 
-Status: implemented in the working project, not released in the installed Windows app yet.
+Status: shipped in version 1.6.0 and refined in version 1.7.0. Install the current update to use it in the Windows app.
+
+Version 1.7.0 removes Inbox from navigation, adds a three-column grid with nine resources per page, expands a resource when selected, and indexes links and attachment references from saved notes. See [Canvas and sharing](canvas-and-sharing.md) for the current guide.
 
 Resource dump keeps study material in one place. Open it from the sidebar, choose Add resource for a link or text, or Upload file for a PDF, image, document text, audio or video. YouTube, Instagram and LinkedIn URLs can be saved without extracting their content. A name is optional for links.
 

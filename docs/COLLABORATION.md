@@ -2,6 +2,8 @@
 
 Status: version 1.6.0. Real Google sign-in, the localhost return callback and an encrypted account relay edit were verified on 2026-10-28. Physical multi-PC testing remains pending.
 
+Version 1.7.0 adds a separate, explicitly created read-only snapshot link under Share. It does not change the live collaborator permissions described here. See [Canvas and sharing](canvas-and-sharing.md) for snapshot expiry, revocation, attachment limits and PDF slide export.
+
 ## Simple explanation
 
 Open Shared with you and sign in. In a note, choose Collaborators, enter another person's Google email and choose Can view or Can edit. Their app lists the invitation in Shared with you. Shared pages use the notebook canvas inside Synapse.
