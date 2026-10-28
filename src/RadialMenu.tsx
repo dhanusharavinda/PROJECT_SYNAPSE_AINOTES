@@ -182,9 +182,10 @@ export default function RadialMenu({
     if (keyboardMode.current && root.current?.contains(document.activeElement))
       return;
     timer.current = setTimeout(() => {
+      if (root.current?.matches(":hover")) return;
       setFading(true);
       timer.current = setTimeout(() => closeRef.current(), 180);
-    }, 4000);
+    }, 600);
   }
   useEffect(() => {
     opener.current = document.activeElement as HTMLElement;
@@ -194,7 +195,11 @@ export default function RadialMenu({
         ?.focus({ preventScroll: true });
     else idle();
     const down = (event: Event) => {
-      if (!root.current?.contains(event.target as Node)) closeRef.current();
+      if (
+        !root.current?.contains(event.target as Node) ||
+        event.target === root.current
+      )
+        closeRef.current();
     };
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -204,11 +209,11 @@ export default function RadialMenu({
           opener.current.focus({ preventScroll: true });
       }
     };
-    window.addEventListener("pointerdown", down);
+    window.addEventListener("pointerdown", down, true);
     window.addEventListener("keydown", key);
     return () => {
       clearTimeout(timer.current);
-      window.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointerdown", down, true);
       window.removeEventListener("keydown", key);
     };
   }, []);

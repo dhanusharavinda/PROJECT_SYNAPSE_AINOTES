@@ -7,9 +7,10 @@ import {
   screen,
   cleanup,
   waitFor,
+  act,
 } from "@testing-library/react";
-import NotebookSheet from "../src/NotebookSheet";
-vi.mock("../src/RichEditor", () => ({ default: () => null }));
+import NotebookSheet, { type SheetHandle } from "../src/NotebookSheet";
+vi.mock("../src/RichEditor", async () => ({ default: (await import('react')).forwardRef(() => null) }));
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -33,10 +34,42 @@ beforeEach(() => {
   HTMLElement.prototype.setPointerCapture = vi.fn();
   HTMLElement.prototype.hasPointerCapture = () => true;
   HTMLElement.prototype.releasePointerCapture = vi.fn();
+  HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+it("inserts a generated diagram as one undoable canvas operation", () => {
+  const ref = React.createRef<SheetHandle>(),
+    change = vi.fn();
+  render(
+    <NotebookSheet
+      ref={ref}
+      value={{ width: 1000, height: 500, items: [] }}
+      onChange={change}
+      onDrawing={() => {}}
+      onImage={() => {}}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  act(() =>
+    ref.current!.diagram({
+      title: "Steps",
+      type: "flowchart",
+      nodes: [
+        { id: "a", label: "Start", kind: "terminal" },
+        { id: "b", label: "Read", kind: "step" },
+      ],
+      edges: [{ from: "a", to: "b", label: "Next" }],
+    }),
+  );
+  expect(change.mock.calls.at(-1)![0].items.length).toBeGreaterThan(4);
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(change.mock.calls.at(-1)![0].items).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+  expect(change.mock.calls.at(-1)![0].items.length).toBeGreaterThan(4);
 });
 it("zooms only with Ctrl/Meta scroll and pans with the middle mouse without creating objects", async () => {
   const change = vi.fn();

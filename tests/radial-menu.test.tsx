@@ -13,6 +13,19 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+it("dismisses on an outside pointer click even when the canvas stops bubbling", () => {
+  const close = vi.fn();
+  render(
+    <>
+      <button onPointerDown={(e) => e.stopPropagation()}>Canvas</button>
+      <RadialMenu x={400} y={300} onClose={close}>
+        <button>New page</button>
+      </RadialMenu>
+    </>,
+  );
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Canvas" }));
+  expect(close).toHaveBeenCalledOnce();
+});
 it("reveals contextual actions by category and preserves their handlers", () => {
   const copy = vi.fn(),
     link = vi.fn(),
@@ -52,7 +65,7 @@ it("fades after idle outside, but stays open while the pointer is choosing", () 
   act(() => vi.advanceTimersByTime(6000));
   expect(close).not.toHaveBeenCalled();
   fireEvent.pointerLeave(menu);
-  act(() => vi.advanceTimersByTime(4000));
+  act(() => vi.advanceTimersByTime(600));
   expect(menu.classList.contains("is-fading")).toBe(true);
   act(() => vi.advanceTimersByTime(180));
   expect(close).toHaveBeenCalledOnce();

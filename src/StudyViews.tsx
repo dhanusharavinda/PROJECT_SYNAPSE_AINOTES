@@ -1,3 +1,4 @@
+import ResourceThumbnail from "./ResourceThumbnail";
 import { useState, useRef, useEffect } from "react";
 import {
   Plus,
@@ -187,30 +188,7 @@ export function Inbox({
                   setEditing(false);
                 }}
               >
-                {(s.kind === "image" && s.file) ||
-                (s.url && youtubeLink(s.url)?.thumbnail) ? (
-                  <img
-                    className="resource-thumbnail"
-                    alt=""
-                    loading="lazy"
-                    src={
-                      s.file
-                        ? fileUrl("attachments", s.file)
-                        : youtubeLink(s.url!)!.thumbnail
-                    }
-                  />
-                ) : null}
-                <span className={"file-icon " + s.kind}>
-                  {s.kind === "image" ? (
-                    <Image size={20} />
-                  ) : s.kind === "media" || s.kind === "reel" ? (
-                    <Video size={20} />
-                  ) : s.kind === "web" ? (
-                    <Link2 size={20} />
-                  ) : (
-                    <FileText size={20} />
-                  )}
-                </span>
+                <ResourceThumbnail source={s} />
                 <div>
                   <span className="section-label">
                     {s.kind} · {new Date(s.created).toLocaleDateString()}

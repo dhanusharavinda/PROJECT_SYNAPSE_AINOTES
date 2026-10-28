@@ -331,168 +331,173 @@ export default function App() {
   return (
     <div className={"app-shell " + (!sidebar ? "sidebar-hidden" : "")}>
       <aside className="sidebar">
-        <div className="brand-row">
-          <a
-            className="brand"
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              navigate("library");
-            }}
-          >
-            <BrandMark />
-            synapse
-            <span className="brand-period">.</span>
-          </a>
-          <button
-            className="icon collapse-sidebar"
-            aria-label="Collapse sidebar"
-            onClick={() => setSidebar(false)}
-          >
-            <PanelLeftClose size={16} />
-          </button>
-        </div>
-        <div className="notebook-picker">
-          <div className="notebook-avatar">
-            <BookOpen size={16} />
-          </div>
-          <div>
-            <strong>My learning space</strong>
-            <small>Local notebook</small>
-          </div>
-          <ChevronDown size={14} />
-        </div>
-        <div className="sidebar-search">
-          <Search size={15} />
-          <input
-            ref={searchRef}
-            placeholder="Search your notes"
-            aria-label="Search notes"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              if (view !== "notes") navigate("notes");
-            }}
-          />
-          <kbd>⌘ K</kbd>
-        </div>
-        <nav aria-label="Main navigation">
-          {(
-            [
-              { id: "library", label: "All notes", Icon: BookOpen },
-              { id: "accounts", label: "Shared with you", Icon: Users },
-              { id: "resources", label: "Resource dump", Icon: LibraryBig },
-              { id: "graph", label: "Knowledge Graph", Icon: Network },
-              {
-                id: "review",
-                label: "Practice",
-                Icon: Brain,
-                count: due || undefined,
-              },
-              { id: "audio", label: "Audio studio", Icon: Headphones },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.id}
-              className={
-                view === item.id || (item.id === "library" && view === "notes")
-                  ? "active"
-                  : ""
-              }
-              onClick={() => navigate(item.id)}
+        <div className="sidebar-scroll">
+          <div className="brand-row">
+            <a
+              className="brand"
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("library");
+              }}
             >
-              <item.Icon size={18} />
-              <span>{item.label}</span>
-              {"count" in item && item.count ? (
-                <small>{item.count}</small>
-              ) : null}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-section-head">
-          <span>Notes</span>
-          <button
-            className="icon"
-            title="Select notes"
-            aria-label="Select notes"
-            onClick={() => {
-              setBulk(!bulk);
-              setChecked([]);
-            }}
-          >
-            <CheckSquare size={16} />
-          </button>
-          <button
-            className="icon"
-            title="New note"
-            aria-label="New note"
-            onClick={() => openCreate()}
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-        {bulk && (
-          <div className="bulk-note-actions">
-            <label>
-              <input
-                type="checkbox"
-                aria-label="Select all visible notes"
-                checked={
-                  filtered.length > 0 &&
-                  filtered.every((n) => checked.includes(n.id))
-                }
-                onChange={(e) =>
-                  setChecked(e.target.checked ? filtered.map((n) => n.id) : [])
-                }
-              />{" "}
-              Select all
-            </label>
+              <BrandMark />
+              synapse
+              <span className="brand-period">.</span>
+            </a>
             <button
-              className="danger-text"
-              disabled={!checked.length}
-              onClick={() => setDeleteConfirm(true)}
+              className="icon collapse-sidebar"
+              aria-label="Collapse sidebar"
+              onClick={() => setSidebar(false)}
             >
-              <Trash2 size={13} /> Delete {checked.length || ""}
+              <PanelLeftClose size={16} />
             </button>
           </div>
-        )}
-        <div className="note-list">
-          {filtered.map((n) => (
-            <div key={n.id} className="note-list-row">
-              {bulk && (
+          <div className="notebook-picker">
+            <div className="notebook-avatar">
+              <BookOpen size={16} />
+            </div>
+            <div>
+              <strong>My learning space</strong>
+              <small>Local notebook</small>
+            </div>
+            <ChevronDown size={14} />
+          </div>
+          <div className="sidebar-search">
+            <Search size={15} />
+            <input
+              ref={searchRef}
+              placeholder="Search your notes"
+              aria-label="Search notes"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (view !== "notes") navigate("notes");
+              }}
+            />
+            <kbd>⌘ K</kbd>
+          </div>
+          <nav aria-label="Main navigation">
+            {(
+              [
+                { id: "library", label: "All notes", Icon: BookOpen },
+                { id: "accounts", label: "Shared with you", Icon: Users },
+                { id: "resources", label: "Resource dump", Icon: LibraryBig },
+                { id: "graph", label: "Knowledge Graph", Icon: Network },
+                {
+                  id: "review",
+                  label: "Practice",
+                  Icon: Brain,
+                  count: due || undefined,
+                },
+                { id: "audio", label: "Audio studio", Icon: Headphones },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.id}
+                className={
+                  view === item.id ||
+                  (item.id === "library" && view === "notes")
+                    ? "active"
+                    : ""
+                }
+                onClick={() => navigate(item.id)}
+              >
+                <item.Icon size={18} />
+                <span>{item.label}</span>
+                {"count" in item && item.count ? (
+                  <small>{item.count}</small>
+                ) : null}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-section-head">
+            <span>Notes</span>
+            <button
+              className="icon"
+              title="Select notes"
+              aria-label="Select notes"
+              onClick={() => {
+                setBulk(!bulk);
+                setChecked([]);
+              }}
+            >
+              <CheckSquare size={16} />
+            </button>
+            <button
+              className="icon"
+              title="New note"
+              aria-label="New note"
+              onClick={() => openCreate()}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {bulk && (
+            <div className="bulk-note-actions">
+              <label>
                 <input
                   type="checkbox"
-                  aria-label={"Select " + n.title}
-                  checked={checked.includes(n.id)}
+                  aria-label="Select all visible notes"
+                  checked={
+                    filtered.length > 0 &&
+                    filtered.every((n) => checked.includes(n.id))
+                  }
                   onChange={(e) =>
-                    setChecked((ids) =>
-                      e.target.checked
-                        ? [...ids, n.id]
-                        : ids.filter((id) => id !== n.id),
+                    setChecked(
+                      e.target.checked ? filtered.map((n) => n.id) : [],
                     )
                   }
-                />
-              )}
+                />{" "}
+                Select all
+              </label>
               <button
-                key={n.id}
-                className={
-                  view === "notes" && selected === n.id ? "selected" : ""
-                }
-                onClick={() => navigate("notes", n)}
+                className="danger-text"
+                disabled={!checked.length}
+                onClick={() => setDeleteConfirm(true)}
               >
-                <span className={"status-dot " + n.status} />
-                <span>{n.title}</span>
+                <Trash2 size={13} /> Delete {checked.length || ""}
               </button>
             </div>
-          ))}
-          {!filtered.length && (
-            <p className="muted small">No matching concepts.</p>
           )}
+          <div className="note-list">
+            {filtered.map((n) => (
+              <div key={n.id} className="note-list-row">
+                {bulk && (
+                  <input
+                    type="checkbox"
+                    aria-label={"Select " + n.title}
+                    checked={checked.includes(n.id)}
+                    onChange={(e) =>
+                      setChecked((ids) =>
+                        e.target.checked
+                          ? [...ids, n.id]
+                          : ids.filter((id) => id !== n.id),
+                      )
+                    }
+                  />
+                )}
+                <button
+                  key={n.id}
+                  className={
+                    view === "notes" && selected === n.id ? "selected" : ""
+                  }
+                  onClick={() => navigate("notes", n)}
+                >
+                  <span className={"status-dot " + n.status} />
+                  <span>{n.title}</span>
+                </button>
+              </div>
+            ))}
+            {!filtered.length && (
+              <p className="muted small">No matching concepts.</p>
+            )}
+          </div>
+          <button className="new-note-button" onClick={() => openCreate()}>
+            <Plus size={15} />
+            New note
+          </button>
         </div>
-        <button className="new-note-button" onClick={() => openCreate()}>
-          <Plus size={15} />
-          New note
-        </button>
         <div className="sidebar-bottom">
           <button
             className="theme-cycle"
@@ -545,6 +550,14 @@ export default function App() {
               <Menu size={18} />
             </button>
             <span>Synapse</span>
+            <button
+              className="icon compact-settings"
+              title="Settings"
+              aria-label="Open settings"
+              onClick={() => navigate("settings")}
+            >
+              <SettingsIcon size={17} />
+            </button>
             {view !== "notes" && view !== "shared-page" && (
               <button
                 className="compact-theme"

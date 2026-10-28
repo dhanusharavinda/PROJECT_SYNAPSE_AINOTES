@@ -84,3 +84,135 @@
     transition: none;
   }
 }
+
+/* The navigation footer must remain reachable at laptop heights and high scaling. */
+.app-shell {
+  min-height: 100dvh;
+}
+.sidebar {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sidebar > * {
+  flex-shrink: 0;
+}
+.sidebar .sidebar-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sidebar-scroll > :not(.note-list) {
+  flex-shrink: 0;
+}
+.sidebar .note-list {
+  min-height: 48px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.sidebar-bottom {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.main-area {
+  min-width: 0;
+}
+.compact-nav .compact-settings {
+  margin-left: auto;
+}
+.compact-nav .compact-settings + .compact-theme {
+  margin-left: 0;
+}
+.note-top,
+.note-topbar {
+  flex-wrap: wrap;
+}
+.note-top .breadcrumb {
+  min-width: 0;
+  flex: 1 1 200px;
+  overflow-wrap: anywhere;
+}
+.settings-grid {
+  min-width: 0;
+}
+.settings-card {
+  min-width: 0;
+}
+.settings-card input,
+.settings-card select {
+  max-width: 100%;
+  min-width: 0;
+}
+@media (max-height: 760px) {
+  .sidebar {
+    padding-top: 16px;
+  }
+  .sidebar .notebook-picker {
+    display: none;
+  }
+  .sidebar nav button {
+    padding-block: 8px;
+  }
+  .sidebar .local-status {
+    display: none;
+  }
+  .sidebar-bottom {
+    padding-top: 8px;
+  }
+  .sidebar .brand-row {
+    margin-bottom: 16px;
+  }
+  .sidebar .sidebar-search {
+    margin-bottom: 12px;
+  }
+  .sidebar .sidebar-section-head {
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+  .sidebar-bottom button {
+    margin-top: 2px;
+    padding-block: 8px;
+  }
+}
+@media (max-width: 1100px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .workspace-page {
+    padding: 18px 14px;
+  }
+  .sidebar {
+    max-width: calc(100vw - 32px);
+  }
+  .note-top .actions {
+    flex-wrap: wrap;
+  }
+}
+
+.resource-library .resource-thumbnail {
+  display: block;
+  width: 100%;
+  height: 145px;
+  object-fit: contain;
+  background: var(--pale);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.resource-library .thumbnail-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.thumbnail-fallback span {
+  font-size: 12px;
+}

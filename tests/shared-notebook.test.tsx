@@ -19,8 +19,11 @@ vi.mock("../src/api", () => ({
 vi.mock("../src/NotebookSheet", async () => {
   const React = await import("react");
   return {
-    default: React.forwardRef(({ children }: any, _ref) => (
-      <div>{children}</div>
+    default: React.forwardRef(({ children, onCommand }: any, _ref) => (
+      <div>
+        {children}
+        <button onClick={() => onCommand("flowchart")}>Make a diagram</button>
+      </div>
     )),
   };
 });
@@ -79,6 +82,24 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+it("opens the diagram composer from a shared page instead of rejecting the canvas command", async () => {
+  const notify = vi.fn();
+  render(
+    <SharedNotebook
+      id={note.id}
+      connection="test"
+      notify={notify}
+      onBack={() => {}}
+    />,
+  );
+  await screen.findByLabelText("Body");
+  fireEvent.click(screen.getByRole("button", { name: "Make a diagram" }));
+  expect(screen.getByRole("button", { name: "Create diagram" })).toBeTruthy();
+  expect(notify).not.toHaveBeenCalled();
+  expect(
+    mock.call.mock.calls.some((call) => call[0] === "/diagrams/draft"),
+  ).toBe(false);
 });
 it("autosaves a shared text edit and clears its recovered-draft record only after acknowledgement", async () => {
   render(

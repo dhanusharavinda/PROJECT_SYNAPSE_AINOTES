@@ -96,6 +96,7 @@
   transition: opacity 180ms ease-out;
 }
 .synapse-wheel.is-fading {
+  animation: none;
   opacity: 0;
   pointer-events: none;
 }
@@ -283,5 +284,39 @@
   .notebook-sheet .sheet-toolbar button {
     min-width: 34px;
     height: 36px;
+  }
+}
+
+/* One frosted surface keeps the action wheel quiet and legible. */
+.synapse-wheel.context-menu {
+  background: color-mix(in srgb, var(--surface, #fff) 52%, transparent);
+  backdrop-filter: blur(16px) saturate(1.12);
+  -webkit-backdrop-filter: blur(16px) saturate(1.12);
+  border-radius: 50%;
+  box-shadow:
+    0 12px 44px #10251d26,
+    inset 0 1px 0 #ffffff66;
+}
+.synapse-wheel .wheel-core {
+  background: transparent;
+  box-shadow: none;
+}
+.synapse-wheel .wheel-category,
+.synapse-wheel .wheel-action {
+  background: color-mix(in srgb, var(--surface, #fff) 50%, transparent);
+  box-shadow: none;
+}
+.synapse-wheel .wheel-category.active,
+.synapse-wheel button:hover {
+  background: var(--green);
+  color: var(--surface);
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .synapse-wheel.context-menu {
+    border-radius: 18px;
+  }
+  .synapse-wheel .wheel-category,
+  .synapse-wheel .wheel-action {
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
   }
 }

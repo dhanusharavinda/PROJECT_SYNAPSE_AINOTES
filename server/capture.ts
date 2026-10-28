@@ -150,13 +150,14 @@ export async function publicPage(
   const image =
     dom.window.document
       .querySelector('meta[property="og:image"]')
-      ?.getAttribute("content") || undefined;
+      ?.getAttribute("content") ||
+    dom.window.document
+      .querySelector('meta[name="twitter:image"]')
+      ?.getAttribute("content") ||
+    undefined;
   const article = new Readability(dom.window.document).parse();
   const text = article?.textContent?.trim() ?? "";
-  if (
-    text.length < 80 &&
-    !(image && /(^|\.)instagram\.com$/.test(url.hostname))
-  )
+  if (text.length < 80 && !image)
     throw new AppError(
       422,
       "Not enough readable text. This page may require a login or client-side rendering. Paste text or upload a file.",
@@ -164,7 +165,7 @@ export async function publicPage(
   return {
     title: article?.title || url.hostname,
     text: text.slice(0, 100000),
-    image,
+    image: image ? new URL(image, url).href : undefined,
     coverage:
       "Public page text only. Embedded video, linked pages, and images were not analyzed.",
   };

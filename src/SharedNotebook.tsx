@@ -1,3 +1,4 @@
+import DiagramComposer from "./DiagramComposer";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Users, Save, Download } from "lucide-react";
 import { api, setSharedMediaScope } from "./api";
@@ -78,6 +79,7 @@ export default function SharedNotebook({
     [link, setLink] = useState(false),
     [target, setTarget] = useState("");
   const [slidesOpen, setSlidesOpen] = useState(false);
+  const [diagramSelection, setDiagramSelection] = useState<string | null>(null);
   const current = useRef<Note | undefined>(undefined),
     baseline = useRef<Snapshot | undefined>(undefined),
     pending = useRef(new Map<string, { base?: string; value: unknown }>()),
@@ -316,7 +318,20 @@ export default function SharedNotebook({
         .then(setLinkedPages)
         .catch((e) => notify(e.message));
       setLink(true);
-    } else if (cmd === "draw") sheet.current?.tool("pen");
+    } else if (cmd === "flowchart" || cmd === "diagram") {
+      if (viewer) return;
+      setDiagramSelection(
+        sheet.current?.editor()?.selectedText() ||
+          lastEditor.current?.state.doc.textBetween(
+            lastEditor.current.state.selection.from,
+            lastEditor.current.state.selection.to,
+            " ",
+          ) ||
+          "",
+      );
+    } else if (cmd === "image" || cmd === "file")
+      document.getElementById("shared-upload")?.click();
+    else if (cmd === "draw") sheet.current?.tool("pen");
     else
       notify(
         "Use the canvas tools here. AI actions and page creation are available from your own notebook.",
@@ -422,6 +437,19 @@ export default function SharedNotebook({
         </button>
         {onNew && <button onClick={onNew}>Subpage</button>}
       </header>
+      {diagramSelection !== null && !viewer && (
+        <DiagramComposer
+          note={note}
+          selection={diagramSelection}
+          onClose={() => setDiagramSelection(null)}
+          onAccept={(diagram) => {
+            if (!sheet.current)
+              throw new Error("The page is still opening. Try again.");
+            sheet.current.diagram(diagram);
+            setDiagramSelection(null);
+          }}
+        />
+      )}
       {membersOpen && (
         <Modal title="Collaborators" onClose={() => setMembersOpen(false)}>
           <Collaborators

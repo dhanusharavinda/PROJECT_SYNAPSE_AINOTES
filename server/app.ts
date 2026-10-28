@@ -1,3 +1,5 @@
+import { storedNoteSchema } from "../src/noteSchema.js";
+import { resourcePreview } from "./resourcePreview.js";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -55,6 +57,24 @@ export async function createApp(
   const pairings = new Pairings();
   const devices = new DeviceSync(vault);
   await devices.load();
+  const draftDiagram = async (body: unknown) => {
+    const input = z
+      .object({
+        note: storedNoteSchema,
+        selection: z.string().max(22000).default(""),
+      })
+      .parse(body);
+    return createDiagramDraft(
+      providers,
+      [input.note as Note],
+      diagramSettings.parse({
+        selection: input.selection,
+        diagramType: "auto",
+      }),
+    );
+  };
+  devices.onDiagram = draftDiagram;
+
   const relay = new RelayHost(vault, devices);
   const collaboration = new Collaboration(vault);
   await collaboration.load();
@@ -326,6 +346,17 @@ export async function createApp(
         }),
       ),
     );
+  });
+  api.post("/diagrams/draft", async (req, res) => {
+    res.json(await draftDiagram(req.body));
+  });
+  api.get("/sources/:id/thumbnail", async (req, res) => {
+    const state = await vault.state();
+    const source = state.sources.find(
+      (s) => s.id === safeId(String(req.params.id)),
+    );
+    if (!source) throw new AppError(404, "Resource not found.");
+    res.json(await resourcePreview(source));
   });
   api.post("/social-preview", async (req, res) => {
     const link = youtubeLink(z.string().max(4000).parse(req.body.url));

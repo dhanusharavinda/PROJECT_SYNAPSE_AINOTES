@@ -235,7 +235,7 @@ export class RelayHost {
     }
     if (
       typeof input.path !== "string" ||
-      !/^(connect|notes(?:\?since=[a-zA-Z0-9%_-]*)?|note|file(?:\?folder=(attachments|drawings)&name=[a-f0-9-]{36}\.(png|jpe?g|webp|svg|pdf|json))?)$/.test(
+      !/^(connect|diagram|notes(?:\?since=[a-zA-Z0-9%_-]*)?|note|file(?:\?folder=(attachments|drawings)&name=[a-f0-9-]{36}\.(png|jpe?g|webp|svg|pdf|json))?)$/.test(
         input.path,
       )
     )
@@ -260,7 +260,9 @@ export class RelayHost {
           },
           body:
             input.body === undefined ? undefined : JSON.stringify(input.body),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(
+            input.path === "diagram" ? 185000 : 30000,
+          ),
         },
       );
       let result: any;

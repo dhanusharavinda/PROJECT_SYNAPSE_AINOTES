@@ -38,6 +38,8 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import RadialMenu from "./RadialMenu";
+import { appendDiagram } from "./diagramCanvas";
+import type { Diagram } from "./diagramDesign";
 import { regionOnSheet } from "./paintBucket";
 import { penWeight } from "./penStroke";
 import type { CanvasItem, NoteCanvas } from "./types";
@@ -78,6 +80,7 @@ type Tool =
   | "table"
   | "bucket";
 export interface SheetHandle {
+  diagram: (diagram: Diagram) => void;
   tool: (tool: Tool) => void;
   image: (src: string, alt: string) => void;
   drawing: (id: string) => void;
@@ -653,6 +656,20 @@ export default forwardRef<
     focus();
   }
   useImperativeHandle(ref, () => ({
+    diagram: (diagram) => {
+      const before = latest.current;
+      const next = appendDiagram(before, diagram);
+      const added = next.items.slice(before.items.length);
+      commit(next);
+      setSelected(added.map((item) => item.id));
+      setTool("select");
+      requestAnimationFrame(() => {
+        focus();
+        root.current
+          ?.querySelector<HTMLElement>(`[data-object-id="${added[0]?.id}"]`)
+          ?.scrollIntoView({ block: "center", inline: "nearest" });
+      });
+    },
     tool: choose,
     image: (src, text) =>
       add({
@@ -1742,6 +1759,7 @@ export default forwardRef<
                     "--tablet-object-y":
                       (scene.width ? i.y : (i.y * viewWidth) / 1000) + "px",
                     "--text-scale": i.textScale || 1,
+                    "--object-ink": i.color,
                     left: scene.width ? i.x : i.x / 10 + "%",
                     top: scene.width ? i.y : (i.y * viewWidth) / 1000,
                     width: scene.width ? i.width : i.width / 10 + "%",

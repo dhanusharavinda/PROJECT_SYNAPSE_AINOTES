@@ -45,6 +45,24 @@ const device = (token: string, method: "get" | "post", url: string) =>
     [method]("/api/device/" + url)
     .set("Origin", origin)
     .set("Authorization", "Bearer " + token);
+it("only accepts diagram requests from a paired device and does not mutate its note", async () => {
+  let called = 0;
+  a.devices.onDiagram = async (body) => {
+    called++;
+    return { received: body };
+  };
+  await device("invalid", "post", "diagram")
+    .send({ selection: "x" })
+    .expect(403);
+  expect(called).toBe(0);
+  const { token } = await pair();
+  const result = await device(token, "post", "diagram")
+    .send({ selection: "Selected text" })
+    .expect(200);
+  expect(result.body.received.selection).toBe("Selected text");
+  expect(called).toBe(1);
+  expect(await a.vault.notes()).toHaveLength(0);
+});
 it("only pairs a one-time code for the exact origin and persists revocable hashed tokens", async () => {
   await owner("post", "/api/devices/pair")
     .send({ origin: "bad origin" })

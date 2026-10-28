@@ -154,13 +154,16 @@ export class RelayClient {
     );
     const pub = await this.publicKey;
     return new Promise<RelayReply>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        this.collector.parts.delete(id);
-        reject(
-          Error("PC did not respond. Your pages stay saved and will retry."),
-        );
-      }, 90000);
+      const timer = setTimeout(
+        () => {
+          this.pending.delete(id);
+          this.collector.parts.delete(id);
+          reject(
+            Error("PC did not respond. Your pages stay saved and will retry."),
+          );
+        },
+        path === "diagram" ? 195000 : 90000,
+      );
       this.pending.set(id, { resolve, reject, timer });
       void sendPackets(this.socket!, this.access.client, id, pub, packet).catch(
         (e) => {

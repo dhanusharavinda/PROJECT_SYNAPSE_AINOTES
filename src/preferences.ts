@@ -88,7 +88,7 @@ export const shortcutLabels: Record<string, string> = {
   page: "Subpage",
   image: "Image",
   file: "PDF or file",
-  flowchart: "Flowchart",
+  flowchart: "Make a diagram",
   quote: "Quote",
   divider: "Divider",
   library: "All notes",

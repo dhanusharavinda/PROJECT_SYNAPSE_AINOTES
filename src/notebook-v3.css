@@ -1,4 +1,8 @@
 /* Stable page geometry and quiet, contextual controls. */
+.sheet-object.kind-text .note-editor,
+.reading-object.kind-text .markdown {
+  color: var(--object-ink, var(--ink));
+}
 .sheet-object.kind-text .note-editor p {
   line-height: calc(32px * var(--text-scale, 1)) !important;
   min-height: calc(32px * var(--text-scale, 1));
@@ -1294,7 +1298,26 @@
   --pale: #e9f0e8;
   --green: #245344;
 }
-:is(.reading-prose,.reading-object) ul.contains-task-list { list-style: none; padding-left: 0; }
-:is(.reading-prose,.reading-object) li.task-list-item { display: flex; align-items: flex-start; gap: 8px; list-style: none; }
-:is(.reading-prose,.reading-object) li.task-list-item > input[type="checkbox"] { width: 14px; height: 14px; flex: 0 0 14px; margin: 7px 0 0; display: inline-block; }
-:is(.reading-prose,.reading-object) li.task-list-item > p { margin: 0; flex: 1; }
+:is(.reading-prose, .reading-object) ul.contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+:is(.reading-prose, .reading-object) li.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  list-style: none;
+}
+:is(.reading-prose, .reading-object)
+  li.task-list-item
+  > input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  margin: 7px 0 0;
+  display: inline-block;
+}
+:is(.reading-prose, .reading-object) li.task-list-item > p {
+  margin: 0;
+  flex: 1;
+}

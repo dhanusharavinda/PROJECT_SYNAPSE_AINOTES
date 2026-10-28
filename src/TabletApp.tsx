@@ -1,3 +1,4 @@
+import DiagramComposer from "./DiagramComposer";
 import { useEffect, useRef, useState } from "react";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
 import RichEditor from "./RichEditor";
@@ -65,6 +66,8 @@ export default function TabletApp() {
     }
   }, [selected, pages.find((p) => p.note.id === selected)?.note.theme]);
   const [writer, setWriter] = useState(false);
+  const [diagramSelection, setDiagramSelection] = useState<string | null>(null);
+  useEffect(() => setDiagramSelection(null), [selected]);
   const [scanning, setScanning] = useState(false),
     [pairLink, setPairLink] = useState(""),
     [invite, setInvite] = useState<PairInvite>();
@@ -303,7 +306,7 @@ export default function TabletApp() {
         Authorization: "Bearer " + c.token,
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(path === "diagram" ? 190000 : 12000),
     });
     const data = await r.json();
     if (!r.ok) throw new SyncError(data.error || "Connection failed");
@@ -701,6 +704,18 @@ export default function TabletApp() {
     }
   }
   function command(cmd: string) {
+    if (!writer) return;
+    if (cmd === "flowchart" || cmd === "diagram") {
+      if (!connection.current) {
+        setError(
+          "Pair this tablet with your PC in Settings to create diagrams. Your PC needs Synapse open and an AI provider configured.",
+        );
+        return;
+      }
+      setDiagramSelection(sheet.current?.editor()?.selectedText() || "");
+      return;
+    }
+
     if (cmd.startsWith("note:")) {
       const id = cmd.slice(5);
       if (ref.current.some((p) => p.note.id === id)) {
@@ -888,6 +903,22 @@ export default function TabletApp() {
       </nav>
       {row ? (
         <section className="tablet-note">
+          {diagramSelection !== null && (
+            <DiagramComposer
+              key={row.note.id}
+              note={row.note}
+              selection={diagramSelection}
+              generate={(body) => remote("diagram", body)}
+              onClose={() => setDiagramSelection(null)}
+              onAccept={(diagram) => {
+                if (!writer || !sheet.current)
+                  throw new Error("The page is still opening. Try again.");
+                sheet.current.diagram(diagram);
+                setDiagramSelection(null);
+              }}
+            />
+          )}
+
           <input
             className="tablet-title"
             aria-label="Page title"
@@ -908,10 +939,7 @@ export default function TabletApp() {
               }
               onImage={() => upload.current?.click()}
               onUpload={(file) => void attach(file)}
-              onCommand={(cmd) => {
-                if (cmd === "table") return;
-                setError("Use Windows for AI and note-link commands.");
-              }}
+              onCommand={command}
             >
               <RichEditor
                 value={row.note.body || ""}

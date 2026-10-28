@@ -5,6 +5,8 @@ import type { Server } from "node:http";
 import { z } from "zod";
 import { Vault, AppError, atomic, noteSchema, uid } from "./vault.js";
 export class DeviceSync {
+  onDiagram?: (body: unknown) => Promise<unknown>;
+  private generatingDiagram = false;
   records: {
     id: string;
     hash: string;
@@ -223,6 +225,21 @@ export class DeviceSync {
       if (!this.valid(req))
         throw new AppError(401, "Pair this device with the PC again.");
       next();
+    });
+    router.post("/diagram", async (req, res) => {
+      if (!this.onDiagram)
+        throw new AppError(503, "Update Synapse on the PC to create diagrams.");
+      if (this.generatingDiagram)
+        throw new AppError(
+          429,
+          "A diagram is already being created. Try again when it finishes.",
+        );
+      this.generatingDiagram = true;
+      try {
+        res.json(await this.onDiagram(req.body));
+      } finally {
+        this.generatingDiagram = false;
+      }
     });
     router.get("/notes", async (req, res) => {
       const notes = await this.vault.notes();

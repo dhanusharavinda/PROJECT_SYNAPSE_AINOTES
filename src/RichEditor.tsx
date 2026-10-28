@@ -126,8 +126,7 @@ const commandInfo = [
   ["image", "Upload image", ImagePlus],
   ["file", "Upload PDF or file", FilePlus2],
   ["draw", "Draw on page", PenLine],
-  ["flowchart", "Make a diagram", Workflow],
-  ["diagram", "Diagram selected text or notes", Workflow],
+  ["diagram", "Make a diagram", Workflow],
   ["quote", "Quote", Quote],
   ["divider", "Divider", Minus],
   ["float", "Move writing freely", Type],
@@ -218,7 +217,7 @@ const Editor = forwardRef<
         "todo",
         "image",
         "table",
-        "flowchart",
+        "diagram",
         "code",
         "numbered",
         "bullet",
@@ -234,6 +233,8 @@ const Editor = forwardRef<
         (key !== "float" || !!onPlace) &&
         (!slash ||
           key.includes(slash.query.toLowerCase()) ||
+          (key === "diagram" &&
+            "flowchart".includes(slash.query.toLowerCase())) ||
           label.toLowerCase().includes(slash.query.toLowerCase())),
     );
   const filteredRef = useRef(filtered);
@@ -374,7 +375,8 @@ const Editor = forwardRef<
         if (
           assigned &&
           (event.ctrlKey || event.metaKey || event.altKey) &&
-          commandInfo.some((info) => info[0] === assigned)
+          (assigned === "flowchart" ||
+            commandInfo.some((info) => info[0] === assigned))
         ) {
           event.preventDefault();
           doRef.current(assigned);
@@ -496,7 +498,10 @@ const Editor = forwardRef<
         void readClipboard()
           .then(insertClipboardText)
           .catch(() => {});
-      } else if (commandInfo.some((info) => info[0] === cmd)) {
+      } else if (
+        cmd === "flowchart" ||
+        commandInfo.some((info) => info[0] === cmd)
+      ) {
         event.preventDefault();
         run(cmd);
       }

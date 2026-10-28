@@ -286,8 +286,8 @@ export default function Practice({
           <div className="recall-controls">
             <p>
               {hidden
-                ? "Recall the hidden parts, then reveal to compare."
-                : "Choose the passages or labels you want to hide."}
+                ? "Recall, then reveal to compare."
+                : "Choose what to recall."}
             </p>
             <label className="recall-toggle">
               <input
@@ -363,12 +363,15 @@ export default function Practice({
           </div>
           {hidden && (
             <>
-              <textarea
-                aria-label="Recall answer"
-                placeholder="Your answer, optional"
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-              />
+              <details className="practice-write">
+                <summary>Write an answer (optional)</summary>{" "}
+                <textarea
+                  aria-label="Recall answer"
+                  placeholder="Your answer, optional"
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                />
+              </details>
               <button
                 className="primary"
                 onClick={() => {
@@ -387,11 +390,8 @@ export default function Practice({
         <section className="flashcard-stage" aria-label="Flashcards">
           {!card ? (
             <div className="flashcard-empty">
-              <h2>Questions from this note</h2>
-              <p>
-                Create up to six cards with hints and source passages. Saved
-                cards are reused until the note changes.
-              </p>
+              <h2>Test your understanding</h2>
+              <p>Six focused questions, with hints from your note.</p>
               <button
                 className="primary"
                 disabled={!!busy || data.config.provider === "none"}
@@ -451,12 +451,15 @@ export default function Practice({
                       {card.hint || "Think about the main idea in this note."}
                     </p>
                   )}
-                  <textarea
-                    aria-label="Flashcard answer"
-                    placeholder="Say it aloud, or write your answer"
-                    value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
-                  />
+                  <details className="practice-write">
+                    <summary>Write an answer (optional)</summary>{" "}
+                    <textarea
+                      aria-label="Flashcard answer"
+                      placeholder="Say it aloud, or write your answer"
+                      value={answer}
+                      onChange={(e) => setAnswer(e.target.value)}
+                    />
+                  </details>
                   <button className="primary" onClick={() => setRevealed(true)}>
                     <Eye size={15} />
                     Reveal answer

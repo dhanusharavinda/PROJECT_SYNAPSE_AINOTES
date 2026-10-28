@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type CSSProperties,
+} from "react";
 import type { NoteCanvas } from "./types";
 import { fileUrl } from "./api";
 import { MD } from "./ui";
@@ -64,22 +70,27 @@ export default function CanvasRead({
             <div
               key={item.id}
               className={"reading-object kind-" + item.kind}
-              style={{
-                position: "absolute",
-                left: item.x,
-                top: item.y,
-                width: item.width,
-                height: item.height,
-                transformOrigin: "center",
-                transform: `rotate(${item.rotation || 0}deg)`,
-                zIndex:
-                  item.kind === "paint" ||
-                  (item.kind === "pen" && (item.opacity || 1) < 1)
-                    ? 1
-                    : index + 3,
-                fontSize:
-                  item.kind === "text" ? 16 * (item.textScale || 1) : undefined,
-              }}
+              style={
+                {
+                  "--object-ink": item.color,
+                  position: "absolute",
+                  left: item.x,
+                  top: item.y,
+                  width: item.width,
+                  height: item.height,
+                  transformOrigin: "center",
+                  transform: `rotate(${item.rotation || 0}deg)`,
+                  zIndex:
+                    item.kind === "paint" ||
+                    (item.kind === "pen" && (item.opacity || 1) < 1)
+                      ? 1
+                      : index + 3,
+                  fontSize:
+                    item.kind === "text"
+                      ? 16 * (item.textScale || 1)
+                      : undefined,
+                } as CSSProperties
+              }
             >
               {item.kind === "text" || item.kind === "table" ? (
                 <MD text={item.text || ""} share={share} />
