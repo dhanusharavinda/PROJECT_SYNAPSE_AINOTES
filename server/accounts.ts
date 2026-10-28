@@ -129,7 +129,11 @@ export class Accounts {
       peer.client.pending.size === 0 &&
       !peer.client.opening
     ) {
-      const access = peer.client.access;
+      const previous = peer.client;
+      const related = [...this.peers.values()].filter(
+        (p) => p.client === previous,
+      );
+      const access = previous.access;
       peer.renewing = (async () => {
         const r = await this.remote("join", {
           id: peer.page.id,
@@ -140,18 +144,22 @@ export class Accounts {
             .update(access.relayToken)
             .digest("hex"),
         });
-        peer.client.close();
-        peer.client = new RelayClient(
+        previous.close();
+        const replacement = new RelayClient(
           access,
           (url) =>
             new WebSocket(url, {
               headers: { Origin: publicNotebookOrigin },
             }) as any,
         );
-        peer.expires = r.expires || Date.now() + 23 * 3600000;
+        for (const item of related) {
+          item.client = replacement;
+          item.expires = r.expires || Date.now() + 23 * 3600000;
+        }
       })().finally(() => {
-        peer.renewing = undefined;
+        for (const item of related) item.renewing = undefined;
       });
+      for (const item of related) item.renewing = peer.renewing;
     }
     await peer.renewing;
     return peer;
@@ -246,6 +254,14 @@ export class Accounts {
       if (principal.localOwner)
         principal.email = c.membership(id)?.owner || principal.email;
       c.role(id, principal);
+      if (action === "open") {
+        const target = z.string().uuid().parse(body.target);
+        const role = c.role(target, principal);
+        const note = await this.vault.note(target);
+        if (note.archived)
+          throw new AppError(404, "This page has been archived.");
+        return { status: 200, data: { id: target, title: note.title, role } };
+      }
       if (action === "watch")
         return {
           status: 200,
@@ -486,8 +502,10 @@ export class Accounts {
       const key = uid();
       if (this.peers.size >= 10) {
         const old = this.peers.keys().next().value!;
-        this.peers.get(old)!.client.close();
+        const client = this.peers.get(old)!.client;
         this.peers.delete(old);
+        if (![...this.peers.values()].some((p) => p.client === client))
+          client.close();
       }
       this.peers.set(key, {
         client: peer,
@@ -498,6 +516,30 @@ export class Accounts {
     });
     r.post("/collaboration/remote/:connection/:action", async (q, s) => {
       const peer = await this.peer(q.params.connection);
+      if (q.params.action === "open") {
+        const target = z.string().uuid().parse(q.body.target);
+        const result = await peer.client.request(
+          "collab/open",
+          { id: peer.page.id, target },
+          this.session?.token,
+        );
+        if (result.status !== 200)
+          return s.status(result.status).json(result.data);
+        const key = uid(),
+          page = { ...peer.page, ...result.data };
+        if (this.peers.size >= 32) {
+          const oldest = this.peers.keys().next().value!;
+          const client = this.peers.get(oldest)!.client;
+          this.peers.delete(oldest);
+          if (
+            client !== peer.client &&
+            ![...this.peers.values()].some((p) => p.client === client)
+          )
+            client.close();
+        }
+        this.peers.set(key, { ...peer, page });
+        return s.json({ connection: key, page });
+      }
       if (
         ![
           "watch",

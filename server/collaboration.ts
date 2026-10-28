@@ -75,11 +75,28 @@ export class Collaboration {
   }
   membership(id: string): Membership | undefined {
     const seen = new Set<string>();
+    let result: Membership | undefined;
+    const members = new Map<string, MemberRole>();
+    const files = new Set<string>();
     while (id && !seen.has(id)) {
       seen.add(id);
-      if (this.roster[id]) return this.roster[id];
+      const direct = this.roster[id];
+      if (direct) {
+        result ||= { ...direct };
+        for (const member of direct.members)
+          if (members.get(member.email) !== "editor")
+            members.set(member.email, member.role);
+        for (const file of direct.files || []) files.add(file);
+      }
       id = this.parents.get(id) || "";
     }
+    return result
+      ? {
+          ...result,
+          members: [...members].map(([email, role]) => ({ email, role })),
+          files: [...files],
+        }
+      : undefined;
   }
   async watch(id: string, p: Principal, cursor?: number) {
     await this.syncHierarchy();
@@ -251,6 +268,7 @@ export class Collaboration {
       note,
       cells: noteCells(note),
       role,
+      session: p.session,
       presence: this.active(id),
       members: role === "owner" ? this.roster[id]?.members || [] : undefined,
     };

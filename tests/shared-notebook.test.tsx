@@ -7,6 +7,7 @@ import {
   fireEvent,
   waitFor,
   cleanup,
+  act,
 } from "@testing-library/react";
 import SharedNotebook from "../src/SharedNotebook";
 import { newTabletNote } from "../src/tabletStore";
@@ -81,7 +82,35 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
+});
+it("releases a focused field after editing becomes idle", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  mock.call.mockImplementationOnce(async () => ({
+    note: structuredClone(note),
+    session: "me",
+    role: "editor",
+    cells: { body: { value: note.body, hash: base } },
+    presence: [],
+  }));
+  await act(async () => {
+    render(
+      <SharedNotebook
+        id={note.id}
+        connection="test"
+        notify={() => {}}
+        onBack={() => {}}
+      />,
+    );
+  });
+  const body = screen.getByLabelText("Body");
+  await act(async () => fireEvent.focus(body));
+  await act(async () => vi.advanceTimersByTime(4000));
+  expect(mock.call).toHaveBeenCalledWith("/collaboration/remote/test/release", {
+    cell: "body",
+  });
 });
 it("applies an incoming live update while preserving a pending local text draft", async () => {
   const original = mock.call.getMockImplementation()!;
@@ -121,6 +150,37 @@ it("applies an incoming live update while preserving a pending local text draft"
     ).toBe("Remote title"),
   );
   expect((body as HTMLTextAreaElement).value).toBe("Local draft");
+});
+it("waits and automatically retries a busy editor lock without showing a destructive recovery panel", async () => {
+  const original = mock.call.getMockImplementation()!;
+  let attempts = 0;
+  mock.call.mockImplementation((path: string, body: any) => {
+    if (path.endsWith("watch")) return new Promise(() => {});
+    if (path.endsWith("acquire") && attempts++ === 0)
+      throw Object.assign(new Error("Other editor is editing this part."), {
+        status: 423,
+      });
+    return original(path, body);
+  });
+  render(
+    <SharedNotebook
+      id={note.id}
+      connection="test"
+      notify={() => {}}
+      onBack={() => {}}
+    />,
+  );
+  fireEvent.change(await screen.findByLabelText("Body"), {
+    target: { value: "Queued explanation" },
+  });
+  await screen.findByText(/Waiting for the other editor/);
+  expect(
+    screen.queryByRole("button", { name: "Reload saved version" }),
+  ).toBeNull();
+  await waitFor(() => expect(note.body).toBe("Queued explanation"), {
+    timeout: 3000,
+  });
+  expect(localStorage.getItem("synapse-shared-draft:" + note.id)).toBeNull();
 });
 it("opens the diagram composer from a shared page instead of rejecting the canvas command", async () => {
   const notify = vi.fn();

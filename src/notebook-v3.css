@@ -1321,3 +1321,8 @@
   margin: 0;
   flex: 1;
 }
+/* Select mode keeps links interactive. Move linked blocks with their drag handle. */
+.clean-sheet .tool-select a {
+  pointer-events: auto;
+  cursor: pointer;
+}

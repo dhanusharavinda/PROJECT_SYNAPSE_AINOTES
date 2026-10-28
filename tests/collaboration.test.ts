@@ -34,6 +34,11 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
+it("keeps inherited parent access when a child also has its own separate collaborator list", async () => {
+  const child = await vault.write({ ...newTabletNote(), parentId: id });
+  await service.invite(child.id, owner, "different@example.test", "viewer");
+  expect((await service.snapshot(child.id, a)).role).toBe("editor");
+});
 it("pushes changes immediately to a waiting second session and includes live presence", async () => {
   const first = await service.watch(id, b);
   const pending = service.watch(id, b, first.cursor);

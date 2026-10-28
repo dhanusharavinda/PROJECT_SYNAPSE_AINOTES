@@ -59,7 +59,9 @@ export async function api<T = any>(
     const data = await response
       .json()
       .catch(() => ({ error: "The local server is unavailable." }));
-    throw new Error(data.error || "Request failed.");
+    throw Object.assign(new Error(data.error || "Request failed."), {
+      status: response.status,
+    });
   }
   return response.json();
 }

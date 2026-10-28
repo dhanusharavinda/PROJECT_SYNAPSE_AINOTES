@@ -872,7 +872,7 @@ export default forwardRef<
     if (
       e.button !== 0 ||
       (e.target as HTMLElement).closest(
-        "button,input,.context-menu,.slash-menu,.sheet-context,iframe",
+        "a,button,input,.context-menu,.slash-menu,.sheet-context,iframe",
       )
     )
       return;
@@ -1180,11 +1180,7 @@ export default forwardRef<
     )
       return;
     if (e.button !== 0 || !["write", "select"].includes(tool)) return;
-    if (
-      tool === "write" &&
-      (e.target as HTMLElement).closest("a,button,iframe,video")
-    )
-      return;
+    if ((e.target as HTMLElement).closest("a,button,iframe,video")) return;
     fullSelection.current = false;
     if (e.shiftKey) {
       e.preventDefault();

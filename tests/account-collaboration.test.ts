@@ -28,6 +28,77 @@ afterEach(async () => {
   for (const p of a.accounts.peers.values()) p.client.close();
   await fs.rm(root, { recursive: true, force: true });
 });
+it("keeps the parent connection usable in other windows when opening a shared subpage", async () => {
+  const key = crypto.randomUUID(),
+    parent = crypto.randomUUID(),
+    child = crypto.randomUUID();
+  const client = {
+    request: vi
+      .fn()
+      .mockResolvedValue({
+        status: 200,
+        data: { id: child, title: "Child", role: "viewer" },
+      }),
+    close: vi.fn(),
+  } as any;
+  a.accounts.peers.set(key, {
+    client,
+    page: { id: parent, room: "same-room" },
+    expires: Date.now() + 600000,
+  });
+  const opened = await owner("/api/collaboration/remote/" + key + "/open")
+    .send({ target: child })
+    .expect(200);
+  expect(client.request).toHaveBeenCalledWith(
+    "collab/open",
+    { id: parent, target: child },
+    undefined,
+  );
+  expect(a.accounts.peers.has(key)).toBe(true);
+  expect(a.accounts.peers.get(opened.body.connection)?.page.id).toBe(child);
+  expect(client.close).not.toHaveBeenCalled();
+});
+it("opens inherited subpages directly through the shared transport without an account index entry", async () => {
+  const parent = (await owner("/api/notes").send({ title: "Parent" })).body;
+  const child = (
+    await owner("/api/notes").send({ title: "Child", parentId: parent.id })
+  ).body;
+  const unrelated = (await owner("/api/notes").send({ title: "Private" })).body;
+  await a.collaboration.invite(
+    parent.id,
+    {
+      session: "owner",
+      email: "owner@example.test",
+      name: "Owner",
+      localOwner: true,
+    },
+    "reader@example.test",
+    "viewer",
+  );
+  vi.spyOn(a.accounts, "identity").mockResolvedValue({
+    sub: "reader",
+    email: "reader@example.test",
+    name: "Reader",
+    nonce: "",
+    expires: Date.now() + 60000,
+  });
+  const opened = await a.accounts.dispatch("reader", {
+    path: "collab/open",
+    token: "synthetic",
+    body: { id: parent.id, target: child.id },
+  });
+  expect(opened.status).toBe(200);
+  expect(opened.data).toEqual({ id: child.id, title: "Child", role: "viewer" });
+  expect(
+    (
+      await a.accounts.dispatch("reader", {
+        path: "collab/open",
+        token: "synthetic",
+        body: { id: parent.id, target: unrelated.id },
+      })
+    ).status,
+  ).toBe(403);
+});
 it("binds external sign-in to the one-use app state and Google nonce without exposing the account token", async () => {
   const token = "a".repeat(64);
   let nonce = "";

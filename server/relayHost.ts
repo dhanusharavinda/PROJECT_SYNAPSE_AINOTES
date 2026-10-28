@@ -214,7 +214,7 @@ export class RelayHost {
     );
     if (
       typeof input.path === "string" &&
-      /^collab\/(watch|snapshot|acquire|change|release|file|upload)$/.test(
+      /^collab\/(open|watch|snapshot|acquire|change|release|file|upload)$/.test(
         input.path,
       ) &&
       this.onCollaboration

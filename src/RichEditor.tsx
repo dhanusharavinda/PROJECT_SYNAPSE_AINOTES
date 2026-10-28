@@ -896,10 +896,12 @@ const Editor = forwardRef<
         const a = (e.target as HTMLElement).closest("a");
         const id = a
           ?.getAttribute("href")
-          ?.match(/^(?:\.\/)?([a-f0-9-]{36})\.md$/)?.[1];
+          ?.match(
+            /^(?:(?:\.\/)?([a-f0-9-]{36})\.md|\/\?note=([a-f0-9-]{36}))$/,
+          );
         if (id) {
           e.preventDefault();
-          commandCallback.current("note:" + id);
+          commandCallback.current("note:" + (id[1] || id[2]));
         } else if (a) {
           e.preventDefault();
           let href = a.getAttribute("href") || "";

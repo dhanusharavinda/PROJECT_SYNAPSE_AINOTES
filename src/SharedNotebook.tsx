@@ -21,6 +21,7 @@ type Peer = {
   email: string;
 };
 type Snapshot = {
+  session?: string;
   note: Note;
   role: string;
   cells: Record<string, { value: unknown; hash: string }>;
@@ -102,10 +103,18 @@ export default function SharedNotebook({
   const bodyEditor = useRef<EditorHandle>(null);
   const [linkedPages, setLinkedPages] = useState<any[]>([]);
   const ownSession = useRef(actor);
+  const lastActivity = useRef(0);
+  function releaseActive() {
+    const previous = cell.current;
+    cell.current = "";
+    if (previous && !pending.current.has(previous) && !inflight.current)
+      void call("release", { cell: previous }).catch(() => {});
+  }
   const others = (snapshot?.presence || []).filter(
     (p) => p.session !== ownSession.current,
   );
   function adopt(fresh: Snapshot) {
+    if (fresh.session) ownSession.current = fresh.session;
     const first = !baseline.current;
     baseline.current = fresh;
     let n = fresh.note;
@@ -167,8 +176,20 @@ export default function SharedNotebook({
           for (const [k, p] of batch)
             if (!pending.current.has(k)) pending.current.set(k, p);
           if (alive.current) {
-            setError((e as Error).message);
-            setStatus("Draft kept on this device");
+            if ((e as any).status === 423) {
+              setError("");
+              setStatus(
+                "Waiting for the other editor. Your draft is saved here.",
+              );
+              if (!timer.current)
+                timer.current = setTimeout(() => {
+                  timer.current = undefined;
+                  void flush().catch(() => {});
+                }, 1000);
+            } else {
+              setError((e as Error).message);
+              setStatus("Draft kept on this device");
+            }
           }
           throw e;
         }
@@ -215,6 +236,7 @@ export default function SharedNotebook({
         });
       }
     if (!changed) return;
+    lastActivity.current = Date.now();
     current.current = next;
     setNote(next);
     onDirty?.(true);
@@ -234,6 +256,7 @@ export default function SharedNotebook({
   }
   async function focusCell(next: string) {
     if (snapshot?.role === "viewer" || !next) return;
+    lastActivity.current = Date.now();
     if (cell.current && cell.current !== next)
       void call("release", { cell: cell.current }).catch(() => {});
     cell.current = next;
@@ -241,7 +264,8 @@ export default function SharedNotebook({
       const a = await call("acquire", { cell: next });
       if (a.session) ownSession.current = a.session;
     } catch (e) {
-      notify((e as Error).message);
+      if (cell.current === next) cell.current = "";
+      if ((e as any).status !== 423) notify((e as Error).message);
     }
   }
   useEffect(() => {
@@ -282,13 +306,22 @@ export default function SharedNotebook({
     };
     void watch();
     const heartbeat = setInterval(() => {
+      if (
+        cell.current &&
+        (document.visibilityState === "hidden" ||
+          !document.hasFocus() ||
+          Date.now() - lastActivity.current > 3000)
+      ) {
+        releaseActive();
+        return;
+      }
       if (cell.current)
         void call("acquire", { cell: cell.current })
           .then((a) => {
             if (a.session) ownSession.current = a.session;
           })
           .catch(() => {});
-    }, 5000);
+    }, 1000);
     onSaveReady?.(flush);
     return () => {
       alive.current = false;
@@ -383,6 +416,9 @@ export default function SharedNotebook({
   return (
     <section
       className="shared-notebook"
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) releaseActive();
+      }}
       onClick={(e) => {
         if (e.defaultPrevented) return;
         const href =
@@ -406,6 +442,8 @@ export default function SharedNotebook({
           );
       }}
       onPointerDownCapture={(e) => {
+        if (!(e.target as HTMLElement).closest("[data-object-id],[data-cell]"))
+          releaseActive();
         if (
           (e.target as HTMLElement).closest('[aria-label="Notebook tools"]')
         ) {

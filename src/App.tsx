@@ -245,6 +245,47 @@ export default function App() {
     if (n) setSelected(n.id);
     if (innerWidth < 900) setSidebar(false);
   }
+  async function openLinkedPage(id: string, connection?: string) {
+    try {
+      await saveCurrent.current?.();
+      if (dirty.current)
+        throw new Error(
+          "Your draft is still saving. Try the link again in a moment.",
+        );
+      if (connection) {
+        const result = await api(
+          "/collaboration/remote/" + connection + "/open",
+          { target: id },
+        );
+        setRemotePage(result);
+        navigate("shared-page");
+        return;
+      }
+      const local =
+        data?.notes.find((n) => n.id === id) ||
+        (await api<Note>("/notes/" + id).catch(() => undefined));
+      if (local) {
+        setDetachedNote(local);
+        await refresh();
+        navigate("notes", local);
+        return;
+      }
+      const pages = await api<SharedPage[]>("/account/pages");
+      const page = pages.find((p) => p.id === id);
+      if (!page)
+        throw new Error(
+          "This linked page is missing or has not been shared with your account.",
+        );
+      const result = await api("/account/open", {
+        id: page.id,
+        room: page.room,
+      });
+      setRemotePage(result);
+      navigate("shared-page");
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (
@@ -605,11 +646,7 @@ export default function App() {
                 groups={[...new Set(data.notes.map((n) => n.group))].sort()}
                 onBack={() => navigate("library")}
                 notify={notify}
-                onOpenNote={(id) => {
-                  const n = data.notes.find((n) => n.id === id);
-                  if (n) navigate("notes", n);
-                  else notify("Open this page from Shared with you.");
-                }}
+                onOpenNote={(id) => void openLinkedPage(id)}
                 onDirty={(d) => (dirty.current = d)}
                 onSaveReady={(save) => (saveCurrent.current = save)}
               />
@@ -670,34 +707,7 @@ export default function App() {
             notify={notify}
             onDirty={(d) => (dirty.current = d)}
             onSaveReady={(save) => (saveCurrent.current = save)}
-            onOpenNote={async (id) => {
-              if (dirty.current) {
-                notify("Wait for your changes to save before changing pages.");
-                return;
-              }
-              try {
-                const pages = await api<SharedPage[]>("/account/pages"),
-                  page = pages.find((p) => p.id === id);
-                if (!page)
-                  throw Error(
-                    "This page has not been shared with your account.",
-                  );
-                if (page.role === "owner") {
-                  const n = data.notes.find((n) => n.id === id);
-                  if (n) {
-                    navigate("notes", n);
-                    return;
-                  }
-                }
-                const r = await api("/account/open", {
-                  id: page.id,
-                  room: page.room,
-                });
-                setRemotePage({ connection: r.connection, page });
-              } catch (e) {
-                notify((e as Error).message);
-              }
-            }}
+            onOpenNote={(id) => void openLinkedPage(id, remotePage.connection)}
           />
         )}
         {view === "graph" && (

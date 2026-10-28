@@ -10,7 +10,9 @@ import {
   act,
 } from "@testing-library/react";
 import NotebookSheet, { type SheetHandle } from "../src/NotebookSheet";
-vi.mock("../src/RichEditor", async () => ({ default: (await import('react')).forwardRef(() => null) }));
+vi.mock("../src/RichEditor", async () => ({
+  default: (await import("react")).forwardRef(() => null),
+}));
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -39,6 +41,37 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+it("allows a link click with Select without starting a selection gesture", () => {
+  const ref = React.createRef<SheetHandle>(),
+    change = vi.fn(),
+    open = vi.fn();
+  render(
+    <NotebookSheet
+      ref={ref}
+      value={{ width: 1000, height: 500, items: [] }}
+      onChange={change}
+      onDrawing={() => {}}
+      onImage={() => {}}
+    >
+      <a
+        href="https://example.com"
+        onClick={(e) => {
+          e.preventDefault();
+          open();
+        }}
+      >
+        Resource
+      </a>
+    </NotebookSheet>,
+  );
+  act(() => ref.current!.tool("select"));
+  const link = screen.getByRole("link", { name: "Resource" });
+  fireEvent.pointerDown(link, { button: 0, pointerId: 1 });
+  fireEvent.pointerUp(link, { button: 0, pointerId: 1 });
+  fireEvent.click(link);
+  expect(open).toHaveBeenCalledOnce();
+  expect(change).not.toHaveBeenCalled();
 });
 it("inserts a generated diagram as one undoable canvas operation", () => {
   const ref = React.createRef<SheetHandle>(),
