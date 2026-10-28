@@ -71,6 +71,18 @@ export class AccountHub {
   async fetch(req: Request): Promise<Response> {
     try {
       const action = new URL(req.url).pathname.split("/").pop();
+      if (action === "view" && req.method === "GET") {
+        const id = new URL(req.url).searchParams.get("id");
+        if (!uuid(id)) return json({ error: "Invalid view link." }, 404);
+        const meta = await this.ctx.storage.get<any>("view:" + id);
+        if (!meta || meta.expires < Date.now())
+          return json({ error: "This view link expired or was removed." }, 404);
+        let data = "";
+        for (let i = 0; i < meta.parts; i++)
+          data +=
+            (await this.ctx.storage.get<string>(`viewdata:${id}:${i}`)) || "";
+        return json({ data, iv: meta.iv, expires: meta.expires });
+      }
       if (action === "config")
         return json({
           configured: !!this.env.GOOGLE_CLIENT_ID,
@@ -137,6 +149,60 @@ export class AccountHub {
       if (!me)
         return json({ error: "Sign in to your Synapse account again." }, 401);
       if (action === "me") return json(me);
+      if (action === "publish-view" && req.method === "POST") {
+        const b = (await req.json()) as any;
+        if (
+          typeof b.data !== "string" ||
+          b.data.length > 4000000 ||
+          !/^[A-Za-z0-9_-]+$/.test(b.data) ||
+          typeof b.iv !== "string" ||
+          !/^[A-Za-z0-9_-]{16}$/.test(b.iv)
+        )
+          return json({ error: "View snapshot is too large or invalid." }, 400);
+        const views = [
+          ...(await this.ctx.storage.list<any>({ prefix: "view:" })).values(),
+        ];
+        if (
+          views.filter((v) => v.owner === me.sub && v.expires > Date.now())
+            .length >= 10
+        )
+          return json(
+            {
+              error:
+                "Remove an old view link before creating another. Maximum 10 active links.",
+            },
+            409,
+          );
+        const id = crypto.randomUUID(),
+          parts = Math.ceil(b.data.length / 60000),
+          expires = Date.now() + 7 * 86400000;
+        for (let i = 0; i < parts; i++)
+          await this.ctx.storage.put(
+            `viewdata:${id}:${i}`,
+            b.data.slice(i * 60000, (i + 1) * 60000),
+          );
+        await this.ctx.storage.put("view:" + id, {
+          owner: me.sub,
+          iv: b.iv,
+          parts,
+          expires,
+        });
+        await this.ctx.storage.setAlarm(Date.now() + 86400000);
+        return json({ id, expires });
+      }
+      if (action === "revoke-view" && req.method === "POST") {
+        const b = (await req.json()) as any;
+        if (!uuid(b.id)) return json({ error: "Invalid view link." }, 400);
+        const meta = await this.ctx.storage.get<any>("view:" + b.id);
+        if (meta && meta.owner !== me.sub)
+          return json({ error: "Only the owner can remove this link." }, 403);
+        if (meta) {
+          await this.ctx.storage.delete("view:" + b.id);
+          for (let i = 0; i < meta.parts; i++)
+            await this.ctx.storage.delete(`viewdata:${b.id}:${i}`);
+        }
+        return json({ ok: true });
+      }
       if (action === "logout" && req.method === "POST") {
         await this.ctx.storage.delete(
           "session:" + (await sha(req.headers.get("Authorization")!.slice(7))),
@@ -251,7 +317,17 @@ export class AccountHub {
     }
   }
   async alarm() {
-    for (const [key, value] of await this.ctx.storage.list<any>()) {
+    for (const [key, value] of [
+      ...(await this.ctx.storage.list<any>({ prefix: "view:" })),
+      ...(await this.ctx.storage.list<any>({ prefix: "session:" })),
+      ...(await this.ctx.storage.list<any>({ prefix: "rate:" })),
+    ]) {
+      if (key.startsWith("view:") && value.expires < Date.now()) {
+        const id = key.slice(5);
+        await this.ctx.storage.delete(key);
+        for (let i = 0; i < value.parts; i++)
+          await this.ctx.storage.delete(`viewdata:${id}:${i}`);
+      }
       if (
         (key.startsWith("session:") && value.expires < Date.now()) ||
         key.startsWith("rate:")

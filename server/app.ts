@@ -3,6 +3,8 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import { indexResources } from "./resourceIndex.js";
+import { snapshot as viewSnapshot } from "./viewLinks.js";
 import { z } from "zod";
 import {
   Vault,
@@ -243,19 +245,40 @@ export async function createApp(
     pairings.revoke();
     res.json({ ok: true });
   });
-  api.get("/bootstrap", async (_req, res) =>
+  api.get("/bootstrap", async (_req, res) => {
+    const indexed = await vault.serial(async () => {
+      const notes = await vault.notes(),
+        state = await vault.state();
+      const sources = indexResources(notes, state.sources);
+      if (sources.length !== state.sources.length) {
+        state.sources = sources;
+        await atomic(
+          vault.file(".synapse/state.json"),
+          JSON.stringify(state, null, 2),
+        );
+      }
+      return { ...state, notes };
+    });
     res.json({
-      ...(await vault.state()),
-      notes: await vault.notes(),
+      ...indexed,
       collaborations: Object.keys(collaboration.roster),
       config: providers.public(!!options.lan),
-    }),
-  );
+    });
+  });
   api.post("/notebook/clear", async (req, res) => {
     if (pairings.valid(req))
       throw new AppError(403, "Clear data from the local app only.");
     if (req.body.confirmation !== "CLEAR MY NOTEBOOK")
       throw new AppError(400, "Type CLEAR MY NOTEBOOK to confirm.");
+    const activeViews = await fs
+      .readFile(vault.file(".synapse/view-links.json"), "utf8")
+      .then(JSON.parse)
+      .catch((e: any) => {
+        if (e.code === "ENOENT") return [];
+        throw e;
+      });
+    for (const link of activeViews.filter((l: any) => l.expires > Date.now()))
+      await accounts.remote("revoke-view", { id: link.id });
     const backup = await vault.clearContent();
     collaboration.roster = {};
     collaboration.presence.clear();
@@ -349,6 +372,69 @@ export async function createApp(
   api.get("/notes/:id", async (req, res) =>
     res.json(await vault.note(String(req.params.id))),
   );
+  api.post("/notes/:id/view-link", async (req, res) => {
+    await accounts.identity();
+    const note = await vault.note(String(req.params.id));
+    if (note.archived) throw new AppError(404, "This note is archived.");
+    const encrypted = await viewSnapshot(vault, note);
+    const result = await accounts.remote("publish-view", {
+      data: encrypted.data,
+      iv: encrypted.iv,
+    });
+    const link = {
+      ...result,
+      noteId: note.id,
+      url: publicNotebookOrigin + "/view/" + result.id + "#" + encrypted.key,
+    };
+    await vault.serial(async () => {
+      const file = vault.file(".synapse/view-links.json");
+      const links = await fs
+        .readFile(file, "utf8")
+        .then(JSON.parse)
+        .catch((e: any) => {
+          if (e.code === "ENOENT") return [];
+          throw e;
+        });
+      await atomic(
+        file,
+        JSON.stringify([
+          ...links.filter((l: any) => l.expires > Date.now()),
+          link,
+        ]),
+      );
+    });
+    res.json(link);
+  });
+  api.get("/notes/:id/view-links", async (req, res) => {
+    const links = await fs
+      .readFile(vault.file(".synapse/view-links.json"), "utf8")
+      .then(JSON.parse)
+      .catch((e: any) => {
+        if (e.code === "ENOENT") return [];
+        throw e;
+      });
+    res.json(
+      links.filter(
+        (l: any) => l.noteId === req.params.id && l.expires > Date.now(),
+      ),
+    );
+  });
+  api.post("/view-links/revoke", async (req, res) => {
+    const id = z.string().uuid().parse(req.body.id);
+    await accounts.remote("revoke-view", { id });
+    await vault.serial(async () => {
+      const file = vault.file(".synapse/view-links.json");
+      const links = await fs
+        .readFile(file, "utf8")
+        .then(JSON.parse)
+        .catch((e: any) => {
+          if (e.code === "ENOENT") return [];
+          throw e;
+        });
+      await atomic(file, JSON.stringify(links.filter((l: any) => l.id !== id)));
+    });
+    res.json({ ok: true });
+  });
   api.put("/notes/:id", async (req, res) => {
     const id = safeId(String(req.params.id));
     const old = await vault.note(id);

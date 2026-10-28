@@ -31,6 +31,7 @@ import {
   Sun,
   Moon,
   FileText,
+  RotateCw,
 } from "lucide-react";
 import { regionOnSheet } from "./paintBucket";
 import { penWeight } from "./penStroke";
@@ -80,7 +81,7 @@ export interface SheetHandle {
   block: (kind: "table" | "text", markdown: string) => void;
 }
 type Gesture = {
-  type: "move" | "resize" | "draw" | "erase" | "select";
+  type: "move" | "resize" | "rotate" | "draw" | "erase" | "select";
   origin: NoteCanvas;
   start: Point;
   last: Point;
@@ -166,6 +167,39 @@ export default forwardRef<
     active = useRef(false),
     [drawingVersion, setDrawingVersion] = useState(0);
   const [viewWidth, setViewWidth] = useState(1000);
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  const scroller = useRef<HTMLDivElement>(null);
+  const pan = useRef<
+    { x: number; y: number; left: number; top: number } | undefined
+  >(undefined);
+  const [arrowStyle, setArrowStyle] =
+    useState<NonNullable<CanvasItem["arrowStyle"]>>("straight");
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      if (gesture.current) return;
+      const rect = el.getBoundingClientRect();
+      const x = event.clientX - rect.left,
+        y = event.clientY - rect.top;
+      const old = zoomRef.current;
+      const next = Math.max(
+        0.25,
+        Math.min(3, old * Math.exp(-event.deltaY * 0.002)),
+      );
+      zoomRef.current = next;
+      setZoom(next);
+      requestAnimationFrame(() => {
+        el.scrollLeft = ((el.scrollLeft + x) * next) / old - x;
+        el.scrollTop = ((el.scrollTop + y) * next) / old - y;
+      });
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, []);
   const [theme, setTheme] = useState(
     document.documentElement.dataset.theme || "light",
   );
@@ -371,8 +405,8 @@ export default forwardRef<
   function at(e: { clientX: number; clientY: number }): Point {
     const rect = root.current!.getBoundingClientRect();
     return [
-      Math.max(0, e.clientX - rect.left),
-      Math.max(0, e.clientY - rect.top),
+      Math.max(0, (e.clientX - rect.left) / zoomRef.current),
+      Math.max(0, (e.clientY - rect.top) / zoomRef.current),
     ];
   }
   function update(id: string, patch: Partial<CanvasItem>) {
@@ -415,7 +449,10 @@ export default forwardRef<
       x: 24,
       y: Math.max(
         20,
-        node && rect ? node.getBoundingClientRect().bottom - rect.top + 20 : 20,
+        node && rect
+          ? (node.getBoundingClientRect().bottom - rect.top) / zoomRef.current +
+              20
+          : 20,
         ...next.items.map((i) => i.y + i.height + 16),
       ),
     };
@@ -728,7 +765,7 @@ export default forwardRef<
     focus();
     setMenu(undefined);
     const rect = root.current!.getBoundingClientRect(),
-      point: Point = [e.clientX - rect.left, e.clientY - rect.top],
+      point = at(e),
       origin = latest.current,
       next = base();
     gesture.current = {
@@ -900,6 +937,7 @@ export default forwardRef<
           strokeWidth: size,
           fill: fill ? color : "none",
           opacity: highlighter && tool === "pen" ? 0.32 : 1,
+          arrowStyle: tool === "arrow" ? arrowStyle : undefined,
           points: [[0, 0]],
           pressures: [1],
         },
@@ -949,6 +987,18 @@ export default forwardRef<
     const origin = migrateScene(g.origin, latest.current.width || 1000);
     let items = latest.current.items;
     if (g.type === "move") items = translate(origin.items, g.ids, dx, dy);
+    else if (g.type === "rotate")
+      items = origin.items.map((i) => {
+        if (!g.ids.includes(i.id)) return i;
+        const cx = i.x + i.width / 2,
+          cy = i.y + i.height / 2;
+        const angle =
+          ((Math.atan2(point[1] - cy, point[0] - cx) -
+            Math.atan2(g.start[1] - cy, g.start[0] - cx)) *
+            180) /
+          Math.PI;
+        return { ...i, rotation: (i.rotation || 0) + angle };
+      });
     else if (g.type === "resize")
       items =
         g.ids.length > 1
@@ -969,8 +1019,10 @@ export default forwardRef<
                   ...(i.points || []),
                   ...samples.map((sample) => {
                     const p: Point = [
-                      sample.clientX - strokeRect.left - g.start[0],
-                      sample.clientY - strokeRect.top - g.start[1],
+                      (sample.clientX - strokeRect.left) / zoomRef.current -
+                        g.start[0],
+                      (sample.clientY - strokeRect.top) / zoomRef.current -
+                        g.start[1],
                     ];
                     const last = g.last;
                     const absolute: Point = [
@@ -1151,6 +1203,45 @@ export default forwardRef<
       />
       <div className="sheet-toolbar" role="toolbar" aria-label="Notebook tools">
         <div className="sheet-tool-group">
+          <select
+            aria-label="Arrow type"
+            value={arrowStyle}
+            onChange={(e) => {
+              const style = e.target.value as NonNullable<
+                CanvasItem["arrowStyle"]
+              >;
+              setArrowStyle(style);
+              if (
+                latest.current.items.some(
+                  (i) => selected.includes(i.id) && i.kind === "arrow",
+                )
+              )
+                commit({
+                  ...latest.current,
+                  items: latest.current.items.map((i) =>
+                    selected.includes(i.id) && i.kind === "arrow"
+                      ? { ...i, arrowStyle: style }
+                      : i,
+                  ),
+                });
+              else choose("arrow");
+            }}
+          >
+            <option value="straight">Straight arrow</option>
+            <option value="curved">Curved arrow</option>
+            <option value="elbow">Elbow arrow</option>
+            <option value="double">Double arrow</option>
+          </select>
+          <button
+            aria-label="Reset canvas zoom"
+            title="Ctrl+scroll to zoom. Middle mouse to pan."
+            onClick={() => {
+              setZoom(1);
+              zoomRef.current = 1;
+            }}
+          >
+            {Math.round(zoom * 100)}%
+          </button>
           {tools.map(([id, label, Icon]) => (
             <button
               key={id}
@@ -1363,7 +1454,46 @@ export default forwardRef<
           </button>
         </div>
       </div>
-      <div className="sheet-scroll">
+      <div
+        className="sheet-scroll"
+        ref={scroller}
+        onAuxClick={(e) => {
+          if (e.button === 1) e.preventDefault();
+        }}
+        onPointerDownCapture={(e) => {
+          if (e.button !== 1) return;
+          e.preventDefault();
+          e.stopPropagation();
+          pan.current = {
+            x: e.clientX,
+            y: e.clientY,
+            left: e.currentTarget.scrollLeft,
+            top: e.currentTarget.scrollTop,
+          };
+          e.currentTarget.setPointerCapture(e.pointerId);
+          e.currentTarget.classList.add("is-panning");
+        }}
+        onPointerMove={(e) => {
+          if (!pan.current) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.scrollLeft =
+            pan.current.left - e.clientX + pan.current.x;
+          e.currentTarget.scrollTop =
+            pan.current.top - e.clientY + pan.current.y;
+        }}
+        onPointerUp={(e) => {
+          if (!pan.current) return;
+          pan.current = undefined;
+          e.currentTarget.classList.remove("is-panning");
+          if (e.currentTarget.hasPointerCapture(e.pointerId))
+            e.currentTarget.releasePointerCapture(e.pointerId);
+        }}
+        onPointerCancel={() => {
+          pan.current = undefined;
+          scroller.current?.classList.remove("is-panning");
+        }}
+      >
         <div
           ref={root}
           tabIndex={0}
@@ -1371,6 +1501,7 @@ export default forwardRef<
           aria-label="Write and draw on this page"
           className={`notebook-sheet-content tool-${tool}${activeGesture ? " is-gesturing" : ""}`}
           style={{
+            zoom,
             minWidth: scene.width || undefined,
             minHeight: Math.max(500, scene.height),
           }}
@@ -1454,6 +1585,7 @@ export default forwardRef<
               <div
                 key={i.id}
                 data-object-id={i.id}
+                data-rotation={i.rotation || 0}
                 data-peer-name={peer?.name}
                 className={`sheet-object ${peer ? "has-peer " : ""}kind-${i.kind}${selected.includes(i.id) ? " is-selected" : ""}${resizing && selected.includes(i.id) ? " is-resizing" : ""}`}
                 style={
@@ -1479,7 +1611,12 @@ export default forwardRef<
                     height: scene.width
                       ? i.height
                       : (i.height * viewWidth) / 1000,
-                    zIndex: i.kind === "paint" ? 1 : index + 3,
+                    transform: `rotate(${i.rotation || 0}deg)`,
+                    zIndex:
+                      i.kind === "paint" ||
+                      (i.kind === "pen" && (i.opacity || 1) < 1)
+                        ? 1
+                        : index + 3,
                   } as CSSProperties
                 }
                 onPointerDown={(e) => objectDown(e, i)}
@@ -1497,7 +1634,15 @@ export default forwardRef<
                 {shape ? (
                   <SheetShape item={i} />
                 ) : i.kind === "video" ? (
-                  <VideoCard url={i.src || ""} title={i.text} editable />
+                  <VideoCard
+                    url={i.src || ""}
+                    title={i.text}
+                    editable
+                    onSelect={() => {
+                      setSelected([i.id]);
+                      active.current = true;
+                    }}
+                  />
                 ) : i.kind === "image" || i.kind === "drawing" ? (
                   <img
                     draggable={false}
@@ -1590,6 +1735,18 @@ export default forwardRef<
                       aria-label="Resize object"
                       onPointerDown={(e) => begin(e, "resize", selected)}
                     />
+                  )}
+                {selected.includes(i.id) &&
+                  !activeGesture &&
+                  selected.length === 1 && (
+                    <button
+                      className="object-rotate"
+                      aria-label="Rotate object"
+                      title="Rotate"
+                      onPointerDown={(e) => begin(e, "rotate", selected)}
+                    >
+                      <RotateCw size={13} />
+                    </button>
                   )}
               </div>
             );

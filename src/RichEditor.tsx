@@ -9,6 +9,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { createPortal } from "react-dom";
 import type { Editor as CoreEditor, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 import { Markdown } from "@tiptap/markdown";
 import { TableKit } from "@tiptap/extension-table";
 import Image from "@tiptap/extension-image";
@@ -56,6 +57,7 @@ import {
   VariantOption,
   DrawingBlock,
   Pastel,
+  TextBackground,
   CodeWithCopy,
   pastelNames,
 } from "./editorNodes";
@@ -251,7 +253,11 @@ const Editor = forwardRef<
       StarterKit.configure({
         paragraph: false,
         codeBlock: false,
-        link: { openOnClick: false },
+        link: false,
+      }),
+      Link.extend({ inclusive: false }).configure({
+        openOnClick: false,
+        HTMLAttributes: { rel: "noopener noreferrer" },
       }),
       AlignedParagraph,
       RenumberLists,
@@ -276,6 +282,7 @@ const Editor = forwardRef<
       VariantGroup,
       VariantOption,
       Pastel,
+      TextBackground,
       DrawingBlock.configure({
         onOpen: (id: string) => commandCallback.current("drawing:" + id),
         onFloat: (id: string) => placeRef.current?.("drawing", id),
@@ -332,6 +339,9 @@ const Editor = forwardRef<
         class: "note-editor",
         "aria-label": "Note explanation",
         role: "textbox",
+        spellcheck: "false",
+        "data-gramm": "false",
+        "data-gramm_editor": "false",
       },
       handleKeyDown: (_view, event) => {
         const assigned = Object.entries(preferencesRef.current.shortcuts).find(
@@ -560,6 +570,7 @@ const Editor = forwardRef<
       });
     }
     setVideoPaste(undefined);
+    editor.commands.unsetMark("link");
   }
   function restore() {
     if (!editor) return;
@@ -652,8 +663,12 @@ const Editor = forwardRef<
     else if (cmd === "todo") c.toggleTaskList().run();
     else if (cmd === "code") c.toggleCodeBlock().run();
     else if (cmd === "inline-code") c.toggleCode().run();
-    else if (cmd === "text") c.setParagraph().run();
-    else if (/^h[123]$/.test(cmd))
+    else if (cmd === "text") {
+      if (editor.isActive("taskList")) c.toggleTaskList().run();
+      else if (editor.isActive("bulletList")) c.toggleBulletList().run();
+      else if (editor.isActive("orderedList")) c.toggleOrderedList().run();
+      else c.setParagraph().run();
+    } else if (/^h[123]$/.test(cmd))
       c.toggleHeading({ level: Number(cmd[1]) as 1 | 2 | 3 }).run();
     else if (cmd === "quote") c.toggleBlockquote().run();
     else if (cmd === "divider") c.setHorizontalRule().run();
@@ -942,6 +957,7 @@ const Editor = forwardRef<
       )}
       {palette && (
         <div className="pastel-picker">
+          <span>Text</span>
           {pastelNames.map((shade) => (
             <button
               key={shade}
@@ -957,6 +973,37 @@ const Editor = forwardRef<
               {shade}
             </button>
           ))}
+          <span>Background</span>
+          {pastelNames.map((shade) => (
+            <button
+              key={"bg-" + shade}
+              data-background={shade}
+              aria-label={"Text background " + shade}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                restore();
+                editor
+                  .chain()
+                  .focus()
+                  .setMark("textBackground", { shade })
+                  .run();
+                setPalette(false);
+              }}
+            >
+              Aa
+            </button>
+          ))}
+          <button
+            aria-label="Clear text background"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              restore();
+              editor.chain().focus().unsetMark("textBackground").run();
+              setPalette(false);
+            }}
+          >
+            Clear background
+          </button>
           <button
             onClick={() => {
               restore();
@@ -1317,6 +1364,7 @@ const Editor = forwardRef<
               </button>
             </div>
             <div className="context-colors">
+              <span>Text</span>
               {pastelNames.map((shade) => (
                 <button
                   key={shade}
@@ -1333,7 +1381,50 @@ const Editor = forwardRef<
                   Aa
                 </button>
               ))}
+              <span>Background</span>
+              {pastelNames.map((shade) => (
+                <button
+                  key={"bg-" + shade}
+                  data-background={shade}
+                  aria-label={"Text background " + shade}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    restore();
+                    editor
+                      .chain()
+                      .focus()
+                      .setMark("textBackground", { shade })
+                      .run();
+                    setContext(undefined);
+                  }}
+                >
+                  Aa
+                </button>
+              ))}
+              <button
+                aria-label="Clear text background"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  restore();
+                  editor.chain().focus().unsetMark("textBackground").run();
+                  setContext(undefined);
+                }}
+              >
+                Clear
+              </button>
             </div>
+            {editor.isActive("taskList") && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  restore();
+                  editor.chain().focus().toggleTaskList().run();
+                  setContext(undefined);
+                }}
+              >
+                Remove to-do list
+              </button>
+            )}
             {commandInfo
               .filter(([key]) =>
                 [

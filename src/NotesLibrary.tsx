@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
 import type { Note } from "./types";
 import { noteSummary } from "./content";
+import SlidesExport from "./SlidesExport";
 export default function NotesLibrary({
   notes,
   onOpen,
@@ -23,6 +24,7 @@ export default function NotesLibrary({
     );
   }, [notes]);
   const groups = [...new Set(notes.map((n) => n.group))].sort();
+  const [slidesOpen, setSlidesOpen] = useState(false);
   const filtered = notes
     .filter(
       (n) =>
@@ -93,7 +95,19 @@ export default function NotesLibrary({
             <Trash2 size={15} />
             Delete
           </button>
+          <button
+            disabled={selected.length > 10}
+            onClick={() => setSlidesOpen(true)}
+          >
+            Export slides
+          </button>
         </div>
+      )}
+      {slidesOpen && (
+        <SlidesExport
+          notes={notes.filter((n) => selected.includes(n.id))}
+          onClose={() => setSlidesOpen(false)}
+        />
       )}
       <div className="library-table">
         <table>

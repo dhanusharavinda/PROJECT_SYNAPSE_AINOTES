@@ -75,6 +75,41 @@ beforeEach(async () => {
   hub = new AccountHub(ctx as any, env as any);
 });
 afterEach(() => vi.unstubAllGlobals());
+it("publishes encrypted read-only snapshots without identity disclosure, enforces ownership and expires chunks", async () => {
+  const owner = (await (
+    await hub.fetch(req("login", { credential: await token() }))
+  ).json()) as any;
+  const other = (await (
+    await hub.fetch(
+      req("login", { credential: await token("other@gmail.com") }),
+    )
+  ).json()) as any;
+  const body = { data: "a".repeat(130000), iv: "b".repeat(16) };
+  expect((await hub.fetch(req("publish-view", body))).status).toBe(401);
+  const published = (await (
+    await hub.fetch(req("publish-view", body, owner.token))
+  ).json()) as any;
+  const read = (await (
+    await hub.fetch(req("view?id=" + published.id))
+  ).json()) as any;
+  expect(read.data).toBe(body.data);
+  expect(read.owner).toBeUndefined();
+  expect(read.iv).toBe(body.iv);
+  expect(
+    (await hub.fetch(req("revoke-view", { id: published.id }, other.token)))
+      .status,
+  ).toBe(403);
+  await hub.fetch(req("revoke-view", { id: published.id }, owner.token));
+  expect((await hub.fetch(req("view?id=" + published.id))).status).toBe(404);
+  expect([...store.keys()].some((k) => k.startsWith("viewdata:"))).toBe(false);
+  const exp = (await (
+    await hub.fetch(req("publish-view", body, owner.token))
+  ).json()) as any;
+  store.get("view:" + exp.id).expires = Date.now() - 1;
+  expect((await hub.fetch(req("view?id=" + exp.id))).status).toBe(404);
+  await hub.alarm();
+  expect([...store.keys()].some((k) => k.startsWith("viewdata:"))).toBe(false);
+});
 it("verifies Google signatures, issuer, audience, expiry and verified email before minting a session", async () => {
   for (const credential of [
     "forged",

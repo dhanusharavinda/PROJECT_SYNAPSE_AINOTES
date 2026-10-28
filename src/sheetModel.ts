@@ -30,6 +30,13 @@ export function resizeItem(
   dx: number,
   dy: number,
 ): CanvasItem {
+  if (item.rotation) {
+    const angle = (item.rotation * Math.PI) / 180;
+    [dx, dy] = [
+      dx * Math.cos(angle) + dy * Math.sin(angle),
+      -dx * Math.sin(angle) + dy * Math.cos(angle),
+    ];
+  }
   const media = ["image", "drawing"].includes(item.kind);
   const ratio =
     Math.abs(dx / item.width) >= Math.abs(dy / item.height)
@@ -115,7 +122,12 @@ export function resizeGroup(
   return items.map((i) =>
     ids.includes(i.id)
       ? {
-          ...resizeItem(i, i.width * (sx - 1), i.height * (sy - 1)),
+          ...resizeItem(
+            { ...i, rotation: 0 },
+            i.width * (sx - 1),
+            i.height * (sy - 1),
+          ),
+          rotation: i.rotation,
           x: x + (i.x - x) * sx,
           y: y + (i.y - y) * sy,
         }
@@ -194,6 +206,24 @@ export function eraseStrokes(
   radius = 9,
 ): CanvasItem[] {
   return items.flatMap((item) => {
+    if (item.kind === "pen" && item.rotation) {
+      const angle = (item.rotation * Math.PI) / 180,
+        cx = item.width / 2,
+        cy = item.height / 2;
+      const flattened = finishStroke({
+        ...item,
+        rotation: 0,
+        x: 0,
+        y: 0,
+        points: (item.points || []).map(([x, y]) => [
+          item.x + cx + (x - cx) * Math.cos(angle) - (y - cy) * Math.sin(angle),
+          item.y + cy + (x - cx) * Math.sin(angle) + (y - cy) * Math.cos(angle),
+        ]),
+      });
+      return strokeCrosses(flattened, a, b, radius)
+        ? eraseStrokes([flattened], a, b, radius)
+        : [item];
+    }
     if (!strokeCrosses(item, a, b, radius)) return [item];
     const input = item.points || [],
       samples: Point[] = [],

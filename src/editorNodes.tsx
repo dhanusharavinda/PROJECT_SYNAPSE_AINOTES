@@ -356,6 +356,27 @@ export const pastelNames = [
   "sky",
   "lavender",
 ] as const;
+function colorSpan(src: string, attribute: string) {
+  const open = src.match(
+    new RegExp(
+      "^<span " + attribute + '="(rose|peach|lemon|mint|sky|lavender)">',
+    ),
+  );
+  if (!open) return;
+  const tags = /<span\b[^>]*>|<\/span>/g;
+  tags.lastIndex = open[0].length;
+  let depth = 1,
+    tag: RegExpExecArray | null;
+  while ((tag = tags.exec(src))) {
+    depth += tag[0].startsWith("</") ? -1 : 1;
+    if (depth === 0)
+      return {
+        raw: src.slice(0, tags.lastIndex),
+        shade: open[1],
+        inner: src.slice(open[0].length, tag.index),
+      };
+  }
+}
 export const Pastel = Mark.create({
   name: "pastel",
   addAttributes() {
@@ -380,15 +401,13 @@ export const Pastel = Mark.create({
     level: "inline",
     start: (s) => s.indexOf("<span data-pastel="),
     tokenize(src, _t, l) {
-      const m = src.match(
-        /^<span data-pastel="(rose|peach|lemon|mint|sky|lavender)">([\s\S]*?)<\/span>/,
-      );
+      const m = colorSpan(src, "data-pastel");
       if (m)
         return {
           type: "pastel",
-          raw: m[0],
-          shade: m[1],
-          tokens: l.inlineTokens(m[2]),
+          raw: m.raw,
+          shade: m.shade,
+          tokens: l.inlineTokens(m.inner),
         };
     },
   },
@@ -396,6 +415,48 @@ export const Pastel = Mark.create({
     h.applyMark("pastel", h.parseInline(t.tokens || []), { shade: t.shade }),
   renderMarkdown: (n, h) =>
     `<span data-pastel="${n.attrs?.shade || "rose"}">${h.renderChildren(n)}</span>`,
+});
+
+export const TextBackground = Mark.create({
+  name: "textBackground",
+  addAttributes() {
+    return { shade: { default: "lemon" } };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "span[data-background]",
+        getAttrs: (el) =>
+          pastelNames.includes(el.getAttribute("data-background") as any)
+            ? { shade: el.getAttribute("data-background") }
+            : false,
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", { "data-background": HTMLAttributes.shade }, 0];
+  },
+  markdownTokenizer: {
+    name: "textBackground",
+    level: "inline",
+    start: (s) => s.indexOf("<span data-background="),
+    tokenize(src, _t, l) {
+      const m = colorSpan(src, "data-background");
+      if (m)
+        return {
+          type: "textBackground",
+          raw: m.raw,
+          shade: m.shade,
+          tokens: l.inlineTokens(m.inner),
+        };
+    },
+  },
+  parseMarkdown: (t, h) =>
+    h.applyMark("textBackground", h.parseInline(t.tokens || []), {
+      shade: t.shade,
+    }),
+  renderMarkdown: (n, h) =>
+    `<span data-background="${n.attrs?.shade || "lemon"}">${h.renderChildren(n)}</span>`,
 });
 
 function CodeView({ node, updateAttributes, editor }: NodeViewProps) {

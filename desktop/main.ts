@@ -171,6 +171,7 @@ function createWindow(url: string) {
     backgroundColor: "#f6f6f0",
     icon: icon.isEmpty() ? undefined : icon,
     webPreferences: {
+      spellcheck: false,
       preload: path.join(
         electronApp.getAppPath(),
         "desktop-dist",

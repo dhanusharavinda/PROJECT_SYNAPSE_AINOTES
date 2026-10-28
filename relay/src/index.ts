@@ -35,7 +35,10 @@ export default {
       const origin = req.headers.get("Origin");
       if (origin && origin !== "https://project-synapse-ainotes.vercel.app")
         return json({ error: "App origin not allowed" }, 403);
-      if (Number(req.headers.get("content-length")) > 40000)
+      if (
+        Number(req.headers.get("content-length")) >
+        (url.pathname === "/accounts/publish-view" ? 4100000 : 40000)
+      )
         return json({ error: "Request too large" }, 413);
       const headers = {
         "Access-Control-Allow-Origin":

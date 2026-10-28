@@ -382,13 +382,6 @@ export default function App() {
               { id: "library", label: "All notes", Icon: BookOpen },
               { id: "accounts", label: "Shared with you", Icon: Users },
               { id: "resources", label: "Resource dump", Icon: LibraryBig },
-              {
-                id: "inbox",
-                label: "Inbox",
-                Icon: InboxIcon,
-                count:
-                  data.sources.filter((s) => !s.archived).length || undefined,
-              },
               { id: "graph", label: "Knowledge Graph", Icon: Network },
               {
                 id: "review",
@@ -596,6 +589,7 @@ export default function App() {
               <SharedNotebook
                 key={"live-" + note.id}
                 id={note.id}
+                groups={[...new Set(data.notes.map((n) => n.group))].sort()}
                 onBack={() => navigate("library")}
                 notify={notify}
                 onOpenNote={(id) => {
@@ -703,7 +697,7 @@ export default function App() {
         )}{" "}
         {(view === "inbox" || view === "resources") && (
           <Inbox
-            library={view === "resources"}
+            library
             data={data}
             refresh={refresh}
             notify={notify}
@@ -838,8 +832,14 @@ export default function App() {
             Topic group
             <input
               value={newGroup}
+              list="new-note-groups"
               onChange={(e) => setNewGroup(e.target.value)}
             />
+            <datalist id="new-note-groups">
+              {[...new Set(data.notes.map((n) => n.group))].sort().map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
           </label>
           <label>
             Date (optional)

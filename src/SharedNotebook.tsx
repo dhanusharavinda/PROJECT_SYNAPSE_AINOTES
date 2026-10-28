@@ -11,6 +11,7 @@ import { MD, Modal } from "./ui";
 import { bodyOf } from "./content";
 import { nextTheme } from "./themes";
 import { Collaborators } from "./AccountPanel";
+import SlidesExport from "./SlidesExport";
 type Peer = {
   session: string;
   cell: string;
@@ -57,10 +58,12 @@ export default function SharedNotebook({
   onSaveReady,
   onNew,
   parents = [],
+  groups = [],
 }: {
   id: string;
   onNew?: () => void;
   parents?: { id: string; title: string }[];
+  groups?: string[];
   connection?: string;
   onBack: () => void;
   notify: (s: string) => void;
@@ -74,6 +77,7 @@ export default function SharedNotebook({
     [status, setStatus] = useState("Opening shared page..."),
     [link, setLink] = useState(false),
     [target, setTarget] = useState("");
+  const [slidesOpen, setSlidesOpen] = useState(false);
   const current = useRef<Note | undefined>(undefined),
     baseline = useRef<Snapshot | undefined>(undefined),
     pending = useRef(new Map<string, { base?: string; value: unknown }>()),
@@ -397,8 +401,25 @@ export default function SharedNotebook({
           Save
         </button>
         {!connection && (
-          <button onClick={() => setMembersOpen(true)}>Collaborators</button>
+          <button
+            onClick={() =>
+              void flush()
+                .then(() => setMembersOpen(true))
+                .catch(() => {})
+            }
+          >
+            Share
+          </button>
         )}
+        <button
+          onClick={() =>
+            void flush()
+              .then(() => setSlidesOpen(true))
+              .catch(() => {})
+          }
+        >
+          Slides
+        </button>
         {onNew && <button onClick={onNew}>Subpage</button>}
       </header>
       {membersOpen && (
@@ -409,6 +430,9 @@ export default function SharedNotebook({
             onOpenShared={() => setMembersOpen(false)}
           />
         </Modal>
+      )}
+      {slidesOpen && (
+        <SlidesExport notes={[note]} onClose={() => setSlidesOpen(false)} />
       )}
       <div className="live-people" aria-label="People editing">
         <Users size={14} />
@@ -522,6 +546,22 @@ export default function SharedNotebook({
               value={note.group}
               onChange={(e) => edit("group", e.target.value)}
             />
+            {!viewer && (
+              <select
+                aria-label="Choose existing group"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) edit("group", e.target.value);
+                }}
+              >
+                <option value="">Choose existing group</option>
+                {groups.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
           <label>
             Topic

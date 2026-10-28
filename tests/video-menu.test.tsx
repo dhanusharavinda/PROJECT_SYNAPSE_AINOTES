@@ -4,6 +4,23 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import VideoPasteMenu from "../src/VideoPasteMenu";
 afterEach(cleanup);
+it("selects an editable video thumbnail without playing, with a separate play action", async () => {
+  const { default: VideoCard } = await import("../src/VideoCard");
+  const select = vi.fn();
+  const { container } = render(
+    <VideoCard
+      editable
+      onSelect={select}
+      url="https://youtu.be/M7lc1UVf-VE"
+      title="Canvas video"
+    />,
+  );
+  fireEvent.click(screen.getByAltText("Canvas video"));
+  expect(select).toHaveBeenCalled();
+  expect(container.querySelector("iframe")).toBeNull();
+  fireEvent.click(screen.getByLabelText("Play video in canvas"));
+  expect(container.querySelector("iframe")).not.toBeNull();
+});
 it("focuses and selects the video name instead of typing behind the paste menu", () => {
   const onChoose = vi.fn();
   render(<VideoPasteMenu x={10} y={10} onChoose={onChoose} />);

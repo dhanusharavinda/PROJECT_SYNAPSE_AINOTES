@@ -30,6 +30,8 @@ export interface CanvasItem {
   pressures?: number[];
   fill?: string;
   opacity?: number;
+  rotation?: number;
+  arrowStyle?: "straight" | "curved" | "elbow" | "double";
   textScale?: number;
 }
 export interface NoteCanvas {

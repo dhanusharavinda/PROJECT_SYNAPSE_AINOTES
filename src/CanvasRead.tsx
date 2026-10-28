@@ -70,7 +70,13 @@ export default function CanvasRead({
                 top: item.y,
                 width: item.width,
                 height: item.height,
-                transformOrigin: "top left",
+                transformOrigin: "center",
+                transform: `rotate(${item.rotation || 0}deg)`,
+                zIndex:
+                  item.kind === "paint" ||
+                  (item.kind === "pen" && (item.opacity || 1) < 1)
+                    ? 1
+                    : index + 3,
                 fontSize:
                   item.kind === "text" ? 16 * (item.textScale || 1) : undefined,
               }}

@@ -33,7 +33,7 @@ function SheetShape({ item }: { item: CanvasItem }) {
           markerHeight="8"
           refX="6"
           refY="4"
-          orient="auto"
+          orient="auto-start-reverse"
         >
           <path d="M1 1 L6 4 L1 7" {...common} strokeWidth="1.3" />
         </marker>
@@ -75,12 +75,24 @@ function SheetShape({ item }: { item: CanvasItem }) {
         <circle cx={pts[0][0]} cy={pts[0][1]} r={sw / 2} fill={color} />
       ) : item.kind === "pen" ? (
         <path d={penOutline(item)} fill={color} />
-      ) : (
-        <polyline
-          points={pts.map((p) => p.join(",")).join(" ")}
+      ) : item.kind === "arrow" ? (
+        <path
+          d={
+            item.arrowStyle === "curved"
+              ? `M${pts[0].join(" ")} Q${pts[0][0]} ${pts.at(-1)![1]} ${pts.at(-1)!.join(" ")}`
+              : item.arrowStyle === "elbow"
+                ? `M${pts[0].join(" ")} H${pts.at(-1)![0]} V${pts.at(-1)![1]}`
+                : `M${pts[0].join(" ")} L${pts.at(-1)!.join(" ")}`
+          }
           {...common}
-          markerEnd={item.kind === "arrow" ? `url(#${marker})` : undefined}
+          fill="none"
+          markerEnd={`url(#${marker})`}
+          markerStart={
+            item.arrowStyle === "double" ? `url(#${marker})` : undefined
+          }
         />
+      ) : (
+        <polyline points={pts.map((p) => p.join(",")).join(" ")} {...common} />
       )}
     </svg>
   );

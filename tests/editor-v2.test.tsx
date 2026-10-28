@@ -74,6 +74,44 @@ async function notebook(value = "Before embeddings after.") {
   await waitFor(() => expect(core).toBeTruthy());
   return { core, handle, changed, command, ...view };
 }
+it("keeps text color and background independent through a Markdown reload", async () => {
+  const { core, container } = await notebook("Pastel words");
+  act(() => {
+    core.commands.setTextSelection({ from: 1, to: 7 });
+    core.commands.setMark("pastel", { shade: "rose" });
+    core.commands.setMark("textBackground", { shade: "lemon" });
+  });
+  const md = core.getMarkdown();
+  expect(md).toContain('data-background="lemon"');
+  expect(md).toContain('data-pastel="rose"');
+  act(() => core.commands.setContent(md, { contentType: "markdown" }));
+  expect(
+    container.querySelector('[data-background="lemon"]')?.textContent,
+  ).toBe("Pastel");
+  expect(
+    container.querySelector(".note-editor")?.getAttribute("spellcheck"),
+  ).toBe("false");
+});
+it("ends a pasted link before following text and removes an accidental task list", async () => {
+  const { core } = await notebook(
+    "- [ ] Task [reference](https://example.com)",
+  );
+  act(() => {
+    core.commands.focus("end");
+    core.commands.insertContent(" unlinked");
+  });
+  const doc = core.getJSON();
+  const json = JSON.stringify(doc);
+  expect(json).toContain("unlinked");
+  let tail: any;
+  core.state.doc.descendants((n) => {
+    if (n.isText) tail = n;
+  });
+  expect(tail.text).toContain("unlinked");
+  expect(tail.marks.some((m: any) => m.type.name === "link")).toBe(false);
+  act(() => core.commands.toggleTaskList());
+  expect(core.getMarkdown()).not.toContain("- [ ]");
+});
 it("persists text alignment in Markdown and restores it in an editor", async () => {
   const { core } = await notebook("Aligned writing");
   act(() => {

@@ -166,6 +166,7 @@ export class Vault {
           ".synapse/outbox",
           ".synapse/state.json",
           ".synapse/collaborators.json",
+          ".synapse/view-links.json",
         ]) {
           const target = backup + "/" + entry.replaceAll("/", "_");
           try {

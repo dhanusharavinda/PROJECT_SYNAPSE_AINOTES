@@ -29,6 +29,8 @@ import { fileNameSchema } from "./noteSchema";
 import { bodyOf, lineage } from "./content";
 import DiagramPreview from "./DiagramPreview";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
+import SlidesExport from "./SlidesExport";
+import { noteUsesResource } from "./resourceRefs";
 const Drawing = lazy(() => import("./Drawing"));
 const layers: Layer[] = ["intuition", "technical", "implementation"];
 export default function NoteView({
@@ -56,6 +58,7 @@ export default function NoteView({
 }) {
   const initial = { ...note, body: bodyOf(note) };
   const [draft, setDraft] = useState<Note>(initial);
+  const [slidesOpen, setSlidesOpen] = useState(false);
   useEffect(() => {
     const previous = document.documentElement.dataset.theme || "light";
     document.documentElement.dataset.theme = draft.theme || previous;
@@ -99,11 +102,11 @@ export default function NoteView({
   }, [note.id]);
 
   const [connections, setConnections] = useState(
-    () => localStorage.getItem("synapse-connections") !== "hidden",
+    () => localStorage.getItem("synapse-connections-v2") === "shown",
   );
   useEffect(() => {
     localStorage.setItem(
-      "synapse-connections",
+      "synapse-connections-v2",
       connections ? "shown" : "hidden",
     );
   }, [connections]);
@@ -362,9 +365,7 @@ export default function NoteView({
     (p) => p.noteId === draft.id && p.state === "pending",
   );
   const lastReview = data.reviews.find((r) => r.noteId === draft.id);
-  const currentSources = data.sources.filter((s) =>
-    draft.sources.includes(s.id),
-  );
+  const currentSources = data.sources.filter((s) => noteUsesResource(draft, s));
   return (
     <div className={"note-workspace " + (!connections ? "focus-mode" : "")}>
       <article className="note-page">
@@ -424,7 +425,18 @@ export default function NoteView({
               }
             >
               <Share2 size={14} />
-              Collaborators
+              Share
+            </button>
+            <button
+              title="Export slides for LinkedIn"
+              onClick={() =>
+                void save()
+                  .then(() => setSlidesOpen(true))
+                  .catch((e) => notify(e.message))
+              }
+            >
+              <Download size={14} />
+              Slides
             </button>
             <button
               className="icon"
@@ -562,6 +574,22 @@ export default function NoteView({
                     <option key={g}>{g}</option>
                   ))}
                 </datalist>
+                <select
+                  aria-label="Choose existing group"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) edit({ group: e.target.value });
+                  }}
+                >
+                  <option value="">Choose existing group</option>
+                  {[...new Set(data.notes.map((n) => n.group))]
+                    .sort()
+                    .map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                </select>
               </label>
             </div>
             <div className="parent-picker">
@@ -772,24 +800,27 @@ export default function NoteView({
               )}
             </details>
           </section>
-          <div className="practice-strip">
-            <div>
-              <h3>Could you explain this without looking?</h3>
-              <p>
-                {lastReview
-                  ? `Last attempt: ${lastReview.hintUsed ? "needed a hint, " : ""}${lastReview.rating}. Next review ${new Date(lastReview.due).toLocaleDateString()}.`
-                  : "Start with recall, then reveal your explanation."}
-              </p>
+          <details className="note-practice">
+            <summary>Practice & review</summary>
+            <div className="practice-strip">
+              <div>
+                <h3>Could you explain this without looking?</h3>
+                <p>
+                  {lastReview
+                    ? `Last attempt: ${lastReview.hintUsed ? "needed a hint, " : ""}${lastReview.rating}. Next review ${new Date(lastReview.due).toLocaleDateString()}.`
+                    : "Start with recall, then reveal your explanation."}
+                </p>
+              </div>
+              <button
+                className="primary"
+                onClick={() =>
+                  action("practice", async () => onPractice(draft.id))
+                }
+              >
+                Practice this concept <ArrowUpRight size={16} />
+              </button>
             </div>
-            <button
-              className="primary"
-              onClick={() =>
-                action("practice", async () => onPractice(draft.id))
-              }
-            >
-              Practice this concept <ArrowUpRight size={16} />
-            </button>
-          </div>
+          </details>
           <footer className="note-footer">
             <label className="review-toggle">
               <input
@@ -1372,6 +1403,9 @@ export default function NoteView({
             }}
           />
         </Modal>
+      )}
+      {slidesOpen && (
+        <SlidesExport notes={[draft]} onClose={() => setSlidesOpen(false)} />
       )}
       {modal === "history" && (
         <Modal title="Local version history" wide onClose={() => setModal("")}>

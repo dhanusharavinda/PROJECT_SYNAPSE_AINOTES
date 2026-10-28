@@ -17,11 +17,13 @@ import {
   Mic,
   Search,
   Bookmark,
+  X,
 } from "lucide-react";
 import { bodyOf, plainNote } from "./content";
 import { readableText } from "./studyText";
 import AITeacher from "./AITeacher";
 import VideoCard from "./VideoCard";
+import { noteUsesResource } from "./resourceRefs";
 import { youtubeLink } from "./youtube";
 import type { Bootstrap, Note, Source, Episode } from "./types";
 import { api, fileUrl } from "./api";
@@ -37,7 +39,7 @@ export function Inbox({
   refresh,
   notify,
   onOpen,
-  library = false,
+  library = true,
 }: Props & { library?: boolean }) {
   const [resourceQuery, setResourceQuery] = useState(""),
     [bookmarksOnly, setBookmarksOnly] = useState(false),
@@ -63,8 +65,11 @@ export function Inbox({
         .toLowerCase()
         .includes(resourceQuery.toLowerCase()),
   );
-  const source =
-    visibleSources.find((s) => s.id === selected) || visibleSources[0];
+  const source = visibleSources.find((s) => s.id === selected);
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [resourceQuery, bookmarksOnly, showArchived]);
+  const pageCount = Math.max(1, Math.ceil(visibleSources.length / 9));
+  const pageIndex = Math.min(page, pageCount - 1);
   async function run(key: string, fn: () => Promise<any>) {
     setBusy(key);
     try {
@@ -171,9 +176,9 @@ export function Inbox({
         </button>
       </div>
       {visibleSources.length ? (
-        <div className="inbox-layout">
+        <div className="resource-library">
           <div className="source-list">
-            {visibleSources.map((s) => (
+            {visibleSources.slice(pageIndex * 9, pageIndex * 9 + 9).map((s) => (
               <button
                 key={s.id}
                 className={
@@ -184,6 +189,19 @@ export function Inbox({
                   setEditing(false);
                 }}
               >
+                {(s.kind === "image" && s.file) ||
+                (s.url && youtubeLink(s.url)?.thumbnail) ? (
+                  <img
+                    className="resource-thumbnail"
+                    alt=""
+                    loading="lazy"
+                    src={
+                      s.file
+                        ? fileUrl("attachments", s.file)
+                        : youtubeLink(s.url!)!.thumbnail
+                    }
+                  />
+                ) : null}
                 <span className={"file-icon " + s.kind}>
                   {s.kind === "image" ? (
                     <Image size={20} />
@@ -214,263 +232,290 @@ export function Inbox({
               </button>
             ))}
           </div>
+          {pageCount > 1 && (
+            <div className="resource-pagination">
+              <button
+                disabled={pageIndex === 0}
+                onClick={() => setPage(pageIndex - 1)}
+              >
+                Previous
+              </button>
+              <span>
+                {pageIndex + 1} / {pageCount}
+              </span>
+              <button
+                disabled={pageIndex + 1 >= pageCount}
+                onClick={() => setPage(pageIndex + 1)}
+              >
+                Next
+              </button>
+            </div>
+          )}
           {source && (
-            <article className="source-detail">
-              <h2>{source.title}</h2>
-              <div className="actions wrap">
-                <button
-                  disabled={!!busy}
-                  aria-pressed={!!source.bookmarked}
-                  onClick={() =>
-                    run("bookmark", () =>
-                      api(
-                        "/sources/" + source.id,
-                        { bookmarked: !source.bookmarked },
-                        "PUT",
-                      ),
-                    )
-                  }
-                >
-                  <Bookmark size={14} />
-                  {source.bookmarked ? "Bookmarked" : "Bookmark"}
-                </button>
-                <label>
-                  Attach to note
-                  <select
-                    aria-label="Attach resource to note"
-                    value={attachNote}
-                    onChange={(e) => setAttachNote(e.target.value)}
-                  >
-                    <option value="">Choose a note</option>
-                    {data.notes.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  disabled={!attachNote || !!busy}
-                  onClick={() =>
-                    run("attach", async () => {
-                      await api("/sources/" + source.id + "/attach", {
-                        noteId: attachNote,
-                      });
-                      notify(
-                        "Resource attached. The original stays in Resource dump.",
-                      );
-                    })
-                  }
-                >
-                  Attach
-                </button>
-              </div>
-              {source.url && youtubeLink(source.url) && (
-                <div className="resource-video" key={source.id}>
-                  <VideoCard url={source.url} title={source.title} />
-                </div>
-              )}
-              {data.notes.some((n) => n.sources.includes(source.id)) && (
-                <div className="resource-attachments">
-                  <span className="muted small">In notes</span>
-                  {data.notes
-                    .filter((n) => n.sources.includes(source.id))
-                    .map((n) => (
-                      <button key={n.id} onClick={() => onOpen(n)}>
-                        {n.title}
-                        <ArrowUpRight size={12} />
-                      </button>
-                    ))}
-                </div>
-              )}
-              <p className="coverage">{source.coverage}</p>
-              <div className="actions wrap">
-                {source.file && (
-                  <a
-                    className="button"
-                    href={fileUrl("attachments", source.file)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open original <ArrowUpRight size={13} />
-                  </a>
-                )}
-                {source.url && (
-                  <a
-                    className="button"
-                    href={source.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Original link <ArrowUpRight size={13} />
-                  </a>
-                )}
-                {source.kind === "image" && (
+            <Modal
+              title={source.title}
+              wide
+              onClose={() => setSelected(undefined)}
+            >
+              <article className="source-detail">
+                <div className="actions wrap">
                   <button
                     disabled={!!busy}
+                    aria-pressed={!!source.bookmarked}
                     onClick={() =>
-                      run("ocr", () =>
-                        api("/sources/" + source.id + "/extract", {
-                          mode: "ocr",
-                        }),
+                      run("bookmark", () =>
+                        api(
+                          "/sources/" + source.id,
+                          { bookmarked: !source.bookmarked },
+                          "PUT",
+                        ),
                       )
                     }
                   >
-                    {busy === "ocr" ? <Busy /> : <Search size={13} />}Local OCR
+                    <Bookmark size={14} />
+                    {source.bookmarked ? "Bookmarked" : "Bookmark"}
                   </button>
-                )}
-                {(source.kind === "media" || source.kind === "image") && (
-                  <button onClick={() => setConsent("vision")}>
-                    <Eye size={13} />
-                    Analyze visuals
-                  </button>
-                )}
-                {source.kind === "media" && (
-                  <button onClick={() => setConsent("transcribe")}>
-                    <Mic size={13} />
-                    Transcribe audio
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setEditText(source.text);
-                    setEditing(!editing);
-                  }}
-                >
-                  Correct or paste text
-                </button>
-                <button
-                  onClick={() =>
-                    run("archive-source", async () => {
-                      await api("/sources/" + source.id + "/archive", {
-                        archived: !source.archived,
-                      });
-                      setSelected(undefined);
-                      notify(
-                        source.archived
-                          ? "Resource restored."
-                          : "Source archived. Notes and original files are preserved.",
-                      );
-                    })
-                  }
-                >
-                  {source.archived ? "Restore" : "Archive"}
-                </button>
-              </div>
-              {source.kind === "image" && source.file && (
-                <img
-                  className="source-image"
-                  src={fileUrl("attachments", source.file)}
-                  alt={source.title}
-                />
-              )}{" "}
-              {editing ? (
-                <>
-                  <textarea
-                    className="source-transcript"
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    aria-label="Source text"
-                  />
+                  <label>
+                    Attach to note
+                    <select
+                      aria-label="Attach resource to note"
+                      value={attachNote}
+                      onChange={(e) => setAttachNote(e.target.value)}
+                    >
+                      <option value="">Choose a note</option>
+                      {data.notes.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button
-                    className="primary"
+                    disabled={!attachNote || !!busy}
                     onClick={() =>
-                      run("save", async () => {
-                        await api(
-                          "/sources/" + source.id,
-                          { text: editText },
-                          "PUT",
+                      run("attach", async () => {
+                        await api("/sources/" + source.id + "/attach", {
+                          noteId: attachNote,
+                        });
+                        notify(
+                          "Resource attached. The original stays in Resource dump.",
                         );
-                        setEditing(false);
                       })
                     }
                   >
-                    Save corrected text
+                    Attach
                   </button>
-                </>
-              ) : (
-                <div className="source-excerpt">
-                  <MD
-                    text={
-                      source.text ||
-                      "No text extracted yet. Paste a transcript or run an available extraction tool."
-                    }
-                  />
                 </div>
-              )}
-              <div className="source-next">
-                <h3>What does this add to your notes?</h3>
-                <p>
-                  Compare passages with existing explanations. Useful examples
-                  and contradictions deserve attention, too.
-                </p>
-                <button
-                  className="primary"
-                  disabled={!source.text || !!busy}
-                  onClick={() => setConsent("analyze")}
-                >
-                  {busy === "analyze" ? <Busy /> : <Sparkles size={15} />}Review
-                  with AI
-                </button>
-              </div>
-              {data.proposals
-                .filter((p) => p.sourceId === source.id)
-                .map((p) => (
-                  <div className="source-proposal" key={p.id}>
-                    <span
-                      className={
-                        "pill " + (p.state === "pending" ? "violet" : "")
+                {source.url && youtubeLink(source.url) && (
+                  <div className="resource-video" key={source.id}>
+                    <VideoCard url={source.url} title={source.title} />
+                  </div>
+                )}
+                {data.notes.some((n) => noteUsesResource(n, source)) && (
+                  <div className="resource-attachments">
+                    <span className="muted small">In notes</span>
+                    {data.notes
+                      .filter((n) => noteUsesResource(n, source))
+                      .map((n) => (
+                        <button key={n.id} onClick={() => onOpen(n)}>
+                          {n.title}
+                          <ArrowUpRight size={12} />
+                        </button>
+                      ))}
+                  </div>
+                )}
+                <p className="coverage">{source.coverage}</p>
+                <div className="actions wrap">
+                  {source.file && (
+                    <a
+                      className="button"
+                      href={fileUrl("attachments", source.file)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open original <ArrowUpRight size={13} />
+                    </a>
+                  )}
+                  {source.url && (
+                    <a
+                      className="button"
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Original link <ArrowUpRight size={13} />
+                    </a>
+                  )}
+                  {source.kind === "image" && (
+                    <button
+                      disabled={!!busy}
+                      onClick={() =>
+                        run("ocr", () =>
+                          api("/sources/" + source.id + "/extract", {
+                            mode: "ocr",
+                          }),
+                        )
                       }
                     >
-                      {p.state}
-                    </span>
-                    <h4>{p.title}</h4>
-                    <p>{p.reason}</p>
-                    {p.excerpt && <blockquote>{p.excerpt}</blockquote>}
+                      {busy === "ocr" ? <Busy /> : <Search size={13} />}Local
+                      OCR
+                    </button>
+                  )}
+                  {(source.kind === "media" || source.kind === "image") && (
+                    <button onClick={() => setConsent("vision")}>
+                      <Eye size={13} />
+                      Analyze visuals
+                    </button>
+                  )}
+                  {source.kind === "media" && (
+                    <button onClick={() => setConsent("transcribe")}>
+                      <Mic size={13} />
+                      Transcribe audio
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setEditText(source.text);
+                      setEditing(!editing);
+                    }}
+                  >
+                    Correct or paste text
+                  </button>
+                  <button
+                    onClick={() =>
+                      run("archive-source", async () => {
+                        await api("/sources/" + source.id + "/archive", {
+                          archived: !source.archived,
+                        });
+                        setSelected(undefined);
+                        notify(
+                          source.archived
+                            ? "Resource restored."
+                            : "Source archived. Notes and original files are preserved.",
+                        );
+                      })
+                    }
+                  >
+                    {source.archived ? "Restore" : "Archive"}
+                  </button>
+                </div>
+                {source.kind === "image" && source.file && (
+                  <img
+                    className="source-image"
+                    src={fileUrl("attachments", source.file)}
+                    alt={source.title}
+                  />
+                )}{" "}
+                {editing ? (
+                  <>
+                    <textarea
+                      className="source-transcript"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      aria-label="Source text"
+                    />
+                    <button
+                      className="primary"
+                      onClick={() =>
+                        run("save", async () => {
+                          await api(
+                            "/sources/" + source.id,
+                            { text: editText },
+                            "PUT",
+                          );
+                          setEditing(false);
+                        })
+                      }
+                    >
+                      Save corrected text
+                    </button>
+                  </>
+                ) : (
+                  <div className="source-excerpt">
                     <MD
                       text={
-                        p.content ||
-                        "Already covered. Accept to attach this source without adding duplicate text."
+                        source.text ||
+                        "No text extracted yet. Paste a transcript or run an available extraction tool."
                       }
                     />
-                    <div className="actions">
-                      <button
-                        onClick={() =>
-                          onOpen(data.notes.find((n) => n.id === p.noteId)!)
+                  </div>
+                )}
+                <div className="source-next">
+                  <h3>What does this add to your notes?</h3>
+                  <p>
+                    Compare passages with existing explanations. Useful examples
+                    and contradictions deserve attention, too.
+                  </p>
+                  <button
+                    className="primary"
+                    disabled={!source.text || !!busy}
+                    onClick={() => setConsent("analyze")}
+                  >
+                    {busy === "analyze" ? <Busy /> : <Sparkles size={15} />}
+                    Review with AI
+                  </button>
+                </div>
+                {data.proposals
+                  .filter((p) => p.sourceId === source.id)
+                  .map((p) => (
+                    <div className="source-proposal" key={p.id}>
+                      <span
+                        className={
+                          "pill " + (p.state === "pending" ? "violet" : "")
                         }
                       >
-                        Open target note
-                      </button>
-                      {p.state === "pending" && (
-                        <>
-                          <button
-                            onClick={() =>
-                              run("proposal", () =>
-                                api("/proposals/" + p.id, {
-                                  action: "dismiss",
-                                }),
-                              )
-                            }
-                          >
-                            Skip
-                          </button>
-                          <button
-                            className="primary"
-                            disabled={!!busy}
-                            onClick={() =>
-                              run("proposal", () =>
-                                api("/proposals/" + p.id, { action: "accept" }),
-                              )
-                            }
-                          >
-                            Accept addition
-                          </button>
-                        </>
-                      )}
+                        {p.state}
+                      </span>
+                      <h4>{p.title}</h4>
+                      <p>{p.reason}</p>
+                      {p.excerpt && <blockquote>{p.excerpt}</blockquote>}
+                      <MD
+                        text={
+                          p.content ||
+                          "Already covered. Accept to attach this source without adding duplicate text."
+                        }
+                      />
+                      <div className="actions">
+                        <button
+                          onClick={() =>
+                            onOpen(data.notes.find((n) => n.id === p.noteId)!)
+                          }
+                        >
+                          Open target note
+                        </button>
+                        {p.state === "pending" && (
+                          <>
+                            <button
+                              onClick={() =>
+                                run("proposal", () =>
+                                  api("/proposals/" + p.id, {
+                                    action: "dismiss",
+                                  }),
+                                )
+                              }
+                            >
+                              Skip
+                            </button>
+                            <button
+                              className="primary"
+                              disabled={!!busy}
+                              onClick={() =>
+                                run("proposal", () =>
+                                  api("/proposals/" + p.id, {
+                                    action: "accept",
+                                  }),
+                                )
+                              }
+                            >
+                              Accept addition
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-            </article>
+                  ))}
+              </article>
+            </Modal>
           )}
         </div>
       ) : (

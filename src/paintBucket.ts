@@ -90,13 +90,17 @@ export async function regionOnSheet(root: HTMLElement, x: number, y: number) {
         img.onerror = () => reject(Error("Could not read this outline."));
         img.src = url;
       });
-      context.drawImage(
-        img,
-        r.left - base.left - left,
-        r.top - base.top - top,
-        r.width,
-        r.height,
+      const width = object.offsetWidth,
+        height = object.offsetHeight;
+      const rotation = (Number(object.dataset.rotation || 0) * Math.PI) / 180;
+      context.save();
+      context.translate(
+        object.offsetLeft - left + width / 2,
+        object.offsetTop - top + height / 2,
       );
+      context.rotate(rotation);
+      context.drawImage(img, -width / 2, -height / 2, width, height);
+      context.restore();
     } finally {
       URL.revokeObjectURL(url);
     }

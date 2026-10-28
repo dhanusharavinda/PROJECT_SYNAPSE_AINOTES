@@ -6,10 +6,12 @@ export default function VideoCard({
   url,
   title = "Video",
   editable = false,
+  onSelect,
 }: {
   url: string;
   title?: string;
   editable?: boolean;
+  onSelect?: () => void;
 }) {
   const video = youtubeLink(url),
     [preview, setPreview] = useState(""),
@@ -62,7 +64,8 @@ export default function VideoCard({
             aria-label={"Play " + (video.platform || "YouTube") + ": " + title}
             onClick={(e) => {
               e.stopPropagation();
-              setPlaying(true);
+              if (editable) onSelect?.();
+              else setPlaying(true);
             }}
           >
             {video.thumbnail || preview ? (
@@ -83,6 +86,19 @@ export default function VideoCard({
           </button>
         )}
       </div>
+      {editable && (
+        <button
+          className="canvas-play-video"
+          aria-label="Play video in canvas"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect?.();
+            setPlaying(true);
+          }}
+        >
+          <Play size={12} /> Play
+        </button>
+      )}
       <a
         href={video.url}
         target="_blank"

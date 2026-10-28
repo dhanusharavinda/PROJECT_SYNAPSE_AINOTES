@@ -94,6 +94,10 @@ export const noteSchema = z.object({
               .regex(/^(none|#[0-9a-fA-F]{6})$/)
               .optional(),
             opacity: z.number().min(0.1).max(1).optional(),
+            rotation: z.number().finite().min(-36000).max(36000).optional(),
+            arrowStyle: z
+              .enum(["straight", "curved", "elbow", "double"])
+              .optional(),
             textScale: z.number().min(0.2).max(20).optional(),
             pressures: z
               .array(z.number().finite().min(0.7).max(1.3))

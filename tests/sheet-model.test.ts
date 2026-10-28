@@ -20,6 +20,13 @@ const stroke: CanvasItem = {
     [104, 4],
   ],
 };
+it("erases a rotated highlighter where it is displayed and retains its opacity", () => {
+  const rotated = { ...stroke, rotation: 90, opacity: 0.32 };
+  const parts = eraseStrokes([rotated], [154, 204], [154, 204], 5);
+  expect(parts).toHaveLength(2);
+  expect(parts.every((p) => p.rotation === 0 && p.opacity === 0.32)).toBe(true);
+  expect(eraseStrokes([rotated], [0, 0], [0, 0], 5)).toEqual([rotated]);
+});
 it("moves a group by one precise delta without changing the space between its items", () => {
   const second = { ...stroke, id: crypto.randomUUID(), x: 250, y: 240 };
   const moved = translate([stroke, second], [stroke.id, second.id], 95, 45);

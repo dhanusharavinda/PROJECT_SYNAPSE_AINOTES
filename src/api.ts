@@ -1,4 +1,8 @@
 let sharedMediaScope = "";
+let viewMedia: Record<string, string> | undefined;
+export function setViewMedia(value?: Record<string, string>) {
+  viewMedia = value;
+}
 export function setSharedMediaScope(value: string) {
   sharedMediaScope = value;
 }
@@ -14,6 +18,8 @@ export function pairingToken() {
   }
 }
 export function mediaUrl(url: string) {
+  if (viewMedia && url.startsWith("/files/"))
+    return viewMedia[url.split("?")[0]] || "";
   if (sharedMediaScope && url.startsWith("/files/"))
     return "/api/collaboration/files/" + sharedMediaScope + "/" + url.slice(7);
   if (location.pathname.startsWith("/tablet") && url.startsWith("/files/"))

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { LogIn, RefreshCw, ArrowUpRight, Users, LogOut } from "lucide-react";
 import type { Note } from "./types";
+import ViewLink from "./ViewLink";
 export type SharedPage = {
   id: string;
   room: string;
@@ -281,6 +282,7 @@ export function Collaborators({
       {members.length > 0 && (
         <button onClick={onOpenShared}>Open live editing</button>
       )}
+      <ViewLink note={note} />
     </>
   );
 }

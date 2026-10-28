@@ -83,7 +83,10 @@ const safeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    span: [["dataPastel", "rose", "peach", "lemon", "mint", "sky", "lavender"]],
+    span: [
+      ["dataPastel", "rose", "peach", "lemon", "mint", "sky", "lavender"],
+      ["dataBackground", "rose", "peach", "lemon", "mint", "sky", "lavender"],
+    ],
     p: [["dataAlign", "left", "center", "right", "justify"]],
   },
 };
