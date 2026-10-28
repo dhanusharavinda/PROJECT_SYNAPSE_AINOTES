@@ -1,6 +1,7 @@
 import type { CanvasItem, NoteCanvas } from "./types";
 export type Point = [number, number];
 export const shapeKinds = [
+  "paint",
   "pen",
   "arrow",
   "rectangle",
@@ -70,10 +71,13 @@ export function resizeItem(
             ),
           )
         : item.textScale,
-    points: item.points?.map(([x, y]) => [
-      (x * width) / item.width,
-      (y * height) / item.height,
-    ]),
+    points:
+      item.kind === "paint"
+        ? item.points
+        : item.points?.map(([x, y]) => [
+            (x * width) / item.width,
+            (y * height) / item.height,
+          ]),
   };
 }
 export function finishStroke(item: CanvasItem): CanvasItem {
@@ -242,4 +246,72 @@ export function eraseStrokes(
       }),
     );
   });
+}
+
+// Apply only the objects changed by one local action, retaining other people's edits.
+export function rebaseScene(
+  current: NoteCanvas,
+  from: NoteCanvas,
+  to: NoteCanvas,
+) {
+  const eq = (a?: CanvasItem, b?: CanvasItem) =>
+    a && b
+      ? JSON.stringify(a, Object.keys(a).sort()) ===
+        JSON.stringify(b, Object.keys(b).sort())
+      : a === b;
+  let items = [...current.items],
+    conflicts = 0;
+  const ids = new Set([...from.items, ...to.items].map((i) => i.id));
+  for (const id of ids) {
+    const expected = from.items.find((i) => i.id === id),
+      desired = to.items.find((i) => i.id === id);
+    if (eq(expected, desired)) continue;
+    const index = items.findIndex((i) => i.id === id),
+      actual = items[index];
+    if (!eq(actual, expected)) {
+      conflicts++;
+      continue;
+    }
+    if (desired) {
+      if (index >= 0) items[index] = desired;
+      else
+        items.splice(
+          Math.min(
+            to.items.findIndex((i) => i.id === id),
+            items.length,
+          ),
+          0,
+          desired,
+        );
+    } else if (index >= 0) items.splice(index, 1);
+  }
+  const fromOrder = from.items.map((i) => i.id),
+    toOrder = to.items.map((i) => i.id);
+  if (
+    fromOrder.length === toOrder.length &&
+    fromOrder.every((id) => toOrder.includes(id)) &&
+    fromOrder.join() !== toOrder.join() &&
+    current.items
+      .filter((i) => ids.has(i.id))
+      .map((i) => i.id)
+      .join() === fromOrder.join()
+  ) {
+    const ordered = toOrder
+      .map((id) => items.find((i) => i.id === id)!)
+      .filter(Boolean);
+    let cursor = 0;
+    items = items.map((i) => (ids.has(i.id) ? ordered[cursor++] : i));
+  }
+  return {
+    scene: {
+      ...current,
+      width: current.width === from.width ? to.width : current.width,
+      height: Math.max(
+        current.height === from.height ? to.height : current.height,
+        ...items.map((i) => i.y + i.height + 24),
+      ),
+      items,
+    },
+    conflicts,
+  };
 }

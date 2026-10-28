@@ -28,6 +28,7 @@ const runtime = [
   "tesseract.js",
   "zod",
   "qrcode",
+  "ws",
 ];
 await fs.mkdir(stage, { recursive: true });
 const manifest = {

@@ -1,3 +1,7 @@
+let sharedMediaScope = "";
+export function setSharedMediaScope(value: string) {
+  sharedMediaScope = value;
+}
 export const hosted = !["localhost", "127.0.0.1", "[::1]"].includes(
   location.hostname,
 );
@@ -10,6 +14,8 @@ export function pairingToken() {
   }
 }
 export function mediaUrl(url: string) {
+  if (sharedMediaScope && url.startsWith("/files/"))
+    return "/api/collaboration/files/" + sharedMediaScope + "/" + url.slice(7);
   if (location.pathname.startsWith("/tablet") && url.startsWith("/files/"))
     return "/tablet" + url.split("?")[0];
   if (!hosted || !url.startsWith("/files/")) return url;

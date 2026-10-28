@@ -16,7 +16,7 @@ export class AppError extends Error {
 }
 export const uid = () => crypto.randomUUID();
 export { linkSchema, layersSchema, noteSchema } from "../src/noteSchema.js";
-import { noteSchema } from "../src/noteSchema.js";
+import { noteSchema, fileNameSchema } from "../src/noteSchema.js";
 export async function atomic(file: string, data: string | Buffer) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temp = file + "." + uid() + ".tmp";
@@ -165,6 +165,7 @@ export class Vault {
           ".synapse/trash",
           ".synapse/outbox",
           ".synapse/state.json",
+          ".synapse/collaborators.json",
         ]) {
           const target = backup + "/" + entry.replaceAll("/", "_");
           try {
@@ -205,6 +206,9 @@ export class Vault {
         const n = decodeNote(
           await fs.readFile(this.file("notes/" + f), "utf8"),
         );
+        n.fileName = f;
+        if (result.some((item) => item.id === n.id))
+          throw new Error("Duplicate note identity");
         if (includeArchived || !n.archived) result.push(n);
       } catch {
         throw new AppError(
@@ -279,7 +283,7 @@ export class Vault {
       );
     if (old) {
       const original = await fs.readFile(
-        this.file("notes/" + n.id + ".md"),
+        this.file("notes/" + old.fileName),
         "utf8",
       );
       const digest = crypto
@@ -300,13 +304,46 @@ export class Vault {
       )
         throw new AppError(400, "Links must point to another existing note.");
     }
+    const fileName = fileNameSchema.parse(
+      n.fileName || old?.fileName || n.id + ".md",
+    );
+    const collision = all.find(
+      (item) =>
+        item.id !== n.id &&
+        item.fileName?.toLowerCase() === fileName.toLowerCase(),
+    );
+    if (collision)
+      throw new AppError(409, "Another page already uses this filename.");
     const saved = {
       ...n,
+      fileName,
       revision: (old?.revision ?? 0) + 1,
       updated: new Date().toISOString(),
     };
     const encoded = encodeNote(saved);
-    await atomic(this.file("notes/" + n.id + ".md"), encoded);
+    const destination = this.file("notes/" + fileName);
+    const previous = old && this.file("notes/" + old.fileName);
+    if (previous && previous !== destination) {
+      try {
+        if (fileName.toLowerCase() !== old.fileName!.toLowerCase()) {
+          try {
+            await fs.access(destination);
+            throw new AppError(409, "This filename is already in use.");
+          } catch (e: any) {
+            if (e.code !== "ENOENT") throw e;
+          }
+        }
+        await fs.rename(previous, destination);
+        try {
+          await atomic(destination, encoded);
+        } catch (error) {
+          await fs.rename(destination, previous);
+          throw error;
+        }
+      } catch (error) {
+        throw error;
+      }
+    } else await atomic(destination, encoded);
     return {
       ...saved,
       etag: crypto.createHash("sha256").update(encoded).digest("hex"),
@@ -326,7 +363,7 @@ export class Vault {
         for (const id of selected) {
           await fs.mkdir(this.file(".synapse/trash"), { recursive: true });
           await fs.rename(
-            this.file(`notes/${id}.md`),
+            this.file("notes/" + all.find((n) => n.id === id)!.fileName),
             this.file(`.synapse/trash/${id}.md`),
           );
           moved.push(id);
@@ -335,7 +372,7 @@ export class Vault {
         for (const id of moved)
           await fs.rename(
             this.file(`.synapse/trash/${id}.md`),
-            this.file(`notes/${id}.md`),
+            this.file("notes/" + all.find((n) => n.id === id)!.fileName),
           );
         throw error;
       }
@@ -360,7 +397,10 @@ export class Vault {
       safeId(id);
       const source = this.file(`.synapse/trash/${id}.md`);
       const data = await fs.readFile(source, "utf8");
-      const destination = this.file(`notes/${id}.md`);
+      const restored = decodeNote(data);
+      const destination = this.file(
+        "notes/" + fileNameSchema.parse(restored.fileName || id + ".md"),
+      );
       await fs.writeFile(destination, data, { flag: "wx" });
       await fs.unlink(source);
     });

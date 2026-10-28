@@ -328,13 +328,15 @@ export class DeviceSync {
           }
           let conflict = !!old ? old.etag !== input.base : input.base !== null;
           let draft = { ...input.note };
-          if (conflict)
+          if (conflict) {
+            delete draft.fileName;
             draft = {
               ...draft,
               id: receipts[key]?.id || uid(),
               title: draft.title.slice(0, 125) + " (device conflict copy)",
               parentId: null,
             };
+          }
           receipts[key] = { id: draft.id, conflict };
           await atomic(
             receiptsFile,

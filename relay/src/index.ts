@@ -1,4 +1,6 @@
-interface Env {
+import { AccountHub, type AccountEnv } from "./accounts";
+export { AccountHub };
+interface Env extends AccountEnv {
   ROOMS: DurableObjectNamespace;
 }
 type Auth = {
@@ -29,6 +31,29 @@ const id = (x: any) => typeof x === "string" && /^[a-f0-9-]{36}$/.test(x),
 export default {
   async fetch(req: Request, env: Env) {
     const url = new URL(req.url);
+    if (url.pathname.startsWith("/accounts/")) {
+      const origin = req.headers.get("Origin");
+      if (origin && origin !== "https://project-synapse-ainotes.vercel.app")
+        return json({ error: "App origin not allowed" }, 403);
+      if (Number(req.headers.get("content-length")) > 40000)
+        return json({ error: "Request too large" }, 413);
+      const headers = {
+        "Access-Control-Allow-Origin":
+          "https://project-synapse-ainotes.vercel.app",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        Vary: "Origin",
+      };
+      if (req.method === "OPTIONS")
+        return new Response(null, { status: 204, headers });
+      const reply = await env.ACCOUNTS.get(
+        env.ACCOUNTS.idFromName("accounts-v1"),
+      ).fetch(req);
+      return new Response(reply.body, {
+        status: reply.status,
+        headers: { ...Object.fromEntries(reply.headers), ...headers },
+      });
+    }
     if (url.pathname === "/health")
       return json({ protocol: 1, service: "synapse-encrypted-relay" });
     const match = url.pathname.match(/^\/rooms\/([a-f0-9-]{36})\/([a-z]+)$/);
@@ -107,6 +132,45 @@ export class SyncRoom {
       }>("owner");
       if (!owner || owner.expires < Date.now())
         return json({ error: "PC connection expired. Pair again." }, 404);
+      if (
+        action === "collaborator" &&
+        url.origin === "https://internal" &&
+        req.method === "POST"
+      ) {
+        const b = (await req.json()) as any;
+        if (
+          !id(b.id) ||
+          !hash(b.hash) ||
+          !Number.isFinite(b.expires) ||
+          b.expires < Date.now()
+        )
+          return json({ error: "Invalid collaborator connection" }, 400);
+        const old = await this.ctx.storage.get<{ hash: string }>(
+          "client:" + b.id,
+        );
+        if (old && old.hash !== b.hash)
+          return json({ error: "Device identity conflict" }, 409);
+        if (
+          !old &&
+          (await this.ctx.storage.list({ prefix: "client:" })).size >= 64
+        )
+          return json(
+            {
+              error:
+                "Too many active connections. Try again after an old connection expires.",
+            },
+            429,
+          );
+        await this.ctx.storage.put("client:" + b.id, {
+          hash: b.hash,
+          expires: Math.min(b.expires, Date.now() + 86400000),
+        });
+        await this.schedule(Date.now() + 300000);
+        return json({
+          ok: true,
+          expires: Math.min(b.expires, Date.now() + 86400000),
+        });
+      }
       if (action === "socket") {
         if (req.headers.get("Upgrade")?.toLowerCase() !== "websocket")
           return json({ error: "WebSocket required" }, 426);

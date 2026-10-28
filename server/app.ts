@@ -31,6 +31,9 @@ import { diagramSchema } from "./diagramSchema.js";
 import { DeviceSync } from "./deviceSync.js";
 import { RelayHost } from "./relayHost.js";
 import QRCode from "qrcode";
+import { Accounts } from "./accounts.js";
+import { Collaboration } from "./collaboration.js";
+import { publicNotebookOrigin } from "../src/relayProtocol.js";
 import type { Note, Proposal, Source } from "../src/types.js";
 
 export async function createApp(
@@ -48,6 +51,11 @@ export async function createApp(
   const devices = new DeviceSync(vault);
   await devices.load();
   const relay = new RelayHost(vault, devices);
+  const collaboration = new Collaboration(vault);
+  await collaboration.load();
+  const accounts = new Accounts(vault, collaboration, relay);
+  await accounts.load();
+  relay.onCollaboration = (client, input) => accounts.dispatch(client, input);
   const port = process.env.PORT || "4317";
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -74,6 +82,10 @@ export async function createApp(
       (req.path.startsWith("/api") || req.path.startsWith("/files"))
     ) {
       if (
+        !(
+          req.path === "/api/account/complete" &&
+          origin === publicNotebookOrigin
+        ) &&
         !pairings.allows(origin) &&
         !(req.path.startsWith("/api/device/") && devices.allows(origin))
       )
@@ -137,8 +149,25 @@ export async function createApp(
         403,
         "This share link is invalid or has been revoked.",
       );
+    if (collaboration.roster[share.noteId])
+      throw new AppError(
+        403,
+        "This page now uses account access. Open Shared with you in Synapse.",
+      );
     return share;
   };
+  app.post("/api/account/complete", async (req, res) => {
+    if (req.get("origin") !== publicNotebookOrigin)
+      throw new AppError(403, "Sign-in origin not allowed.");
+    const input = z
+      .object({
+        state: z.string().regex(/^[a-f0-9]{64}$/),
+        token: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .parse(req.body);
+    await accounts.complete(input.state, input.token);
+    res.json({ ok: true });
+  });
   const api = express.Router();
   app.use("/api/device", devices.router());
   app.post("/api/connect", (req, res) => {
@@ -150,6 +179,7 @@ export async function createApp(
     );
   });
   api.use(owner);
+  api.use(accounts.router());
   api.post("/devices/qr", async (req, res) => {
     if (pairings.valid(req)) throw new AppError(403, "Pair from the local PC.");
     const result = await relay.invitation(req.body.origin || undefined);
@@ -193,10 +223,12 @@ export async function createApp(
   api.post("/notes/trash", async (req, res) => {
     const ids = z.array(z.string().uuid()).min(1).max(500).parse(req.body.ids);
     res.json({ ids: await vault.trash(ids) });
+    void accounts.sweepIndex(true).catch(() => {});
   });
   api.get("/trash", async (_req, res) => res.json(await vault.trashed()));
   api.post("/trash/:id/restore", async (req, res) => {
     await vault.restoreTrash(String(req.params.id));
+    void accounts.sweepIndex(true).catch(() => {});
     res.json({ ok: true });
   });
   api.post("/pairing", (req, res) => {
@@ -215,6 +247,7 @@ export async function createApp(
     res.json({
       ...(await vault.state()),
       notes: await vault.notes(),
+      collaborations: Object.keys(collaboration.roster),
       config: providers.public(!!options.lan),
     }),
   );
@@ -223,7 +256,11 @@ export async function createApp(
       throw new AppError(403, "Clear data from the local app only.");
     if (req.body.confirmation !== "CLEAR MY NOTEBOOK")
       throw new AppError(400, "Type CLEAR MY NOTEBOOK to confirm.");
-    res.json({ backup: await vault.clearContent() });
+    const backup = await vault.clearContent();
+    collaboration.roster = {};
+    collaboration.presence.clear();
+    void accounts.sweepIndex(true).catch(() => {});
+    res.json({ backup });
   });
   api.post("/teacher", async (req, res) => {
     const input = z
@@ -289,7 +326,11 @@ export async function createApp(
     }
   });
   api.post("/notes", async (req, res) => {
+    const parent = req.body.parentId
+      ? await vault.note(req.body.parentId)
+      : undefined;
     const input = noteSchema.parse({
+      ...(parent?.theme ? { theme: parent.theme } : {}),
       context: "",
       group: "Unsorted",
       layers: { intuition: "", technical: "", implementation: "" },
@@ -322,6 +363,7 @@ export async function createApp(
   api.delete("/notes/:id", async (req, res) => {
     const n = await vault.note(String(req.params.id));
     res.json(await vault.write({ ...n, archived: true }, n.revision));
+    void accounts.sweepIndex(true).catch(() => {});
   });
   api.get("/archive", async (_req, res) =>
     res.json((await vault.notes(true)).filter((n) => n.archived)),
@@ -329,6 +371,7 @@ export async function createApp(
   api.post("/notes/:id/restore", async (req, res) => {
     const n = await vault.note(String(req.params.id));
     res.json(await vault.write({ ...n, archived: false }, n.revision));
+    void accounts.sweepIndex(true).catch(() => {});
   });
   api.get("/notes/:id/export", async (req, res) => {
     const n = await vault.note(String(req.params.id));
@@ -390,6 +433,7 @@ export async function createApp(
           : key;
       if (!exported[id] || key.startsWith("roadmap-")) exported[id] = point;
     }
+    const graphNotes = await vault.notes();
     await atomic(
       vault.file("maps/knowledge-graph.canvas"),
       JSON.stringify(
@@ -397,13 +441,15 @@ export async function createApp(
           nodes: Object.entries(exported).map(([id, p]) => ({
             id,
             type: "file",
-            file: `notes/${id}.md`,
+            file:
+              "notes/" +
+              (graphNotes.find((n) => n.id === id)?.fileName || id + ".md"),
             x: p.x,
             y: p.y,
             width: 220,
             height: 85,
           })),
-          edges: (await vault.notes()).flatMap((n) =>
+          edges: graphNotes.flatMap((n) =>
             n.links.map((l) => ({
               id: n.id + "-" + l.target,
               fromNode: n.id,
@@ -449,10 +495,13 @@ export async function createApp(
         title: z.string().trim().min(1).max(300),
         text: z.string().max(150000).default(""),
         url: z.string().url().max(3000).optional(),
+        extract: z.boolean().default(true),
       })
       .parse(req.body);
     let source: Source = {
-      ...data,
+      title: data.title,
+      text: data.text,
+      ...(data.url ? { url: data.url } : {}),
       id: uid(),
       kind: "text",
       coverage: "Pasted text. Check the original source for completeness.",
@@ -465,7 +514,17 @@ export async function createApp(
           400,
           "Only public HTTP/HTTPS source URLs are supported.",
         );
-      if (/(^|\.)instagram\.com$/.test(u.hostname)) {
+      if (!data.extract) {
+        source = {
+          ...source,
+          kind: /(^|\.)(instagram\.com|youtube\.com|youtu\.be)$/.test(
+            u.hostname,
+          )
+            ? "reel"
+            : "web",
+          coverage: "Link saved. The original post has not been extracted.",
+        };
+      } else if (/(^|\.)instagram\.com$/.test(u.hostname)) {
         source = {
           ...source,
           kind: "reel",
@@ -477,10 +536,15 @@ export async function createApp(
         source = { ...source, ...page, kind: "web" };
       }
     }
+    let existing: Source | undefined;
     await vault.mutate((s) => {
-      s.sources.unshift(source);
+      existing =
+        !data.extract && source.url
+          ? s.sources.find((item) => item.url === source.url)
+          : undefined;
+      if (!existing) s.sources.unshift(source);
     });
-    res.status(201).json(source);
+    res.status(existing ? 200 : 201).json(existing || source);
   });
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -639,14 +703,37 @@ export async function createApp(
     });
     res.json({ ok: true });
   });
+  api.post("/sources/:id/attach", async (req, res) => {
+    const noteId = z.string().uuid().parse(req.body.noteId);
+    const result = await vault.serial(async () => {
+      const note = await vault.note(noteId);
+      const resource = (await vault.state()).sources.find(
+        (s) => s.id === req.params.id,
+      );
+      if (!resource) throw new AppError(404, "Resource not found.");
+      if (note.sources.includes(resource.id)) return note;
+      return vault.writeUnlocked(
+        { ...note, sources: [...note.sources, resource.id] },
+        note.revision,
+      );
+    });
+    res.json(result);
+  });
   api.put("/sources/:id", async (req, res) => {
-    const text = z.string().max(150000).parse(req.body.text);
+    const patch = z
+      .object({
+        text: z.string().max(150000).optional(),
+        title: z.string().trim().min(1).max(300).optional(),
+        bookmarked: z.boolean().optional(),
+      })
+      .parse(req.body);
     await vault.mutate((s) => {
       const item = s.sources.find((x) => x.id === req.params.id);
       if (!item) throw new AppError(404, "Source not found.");
-      item.text = text;
-      item.coverage =
-        "User-corrected transcript or extraction. Original attachment preserved.";
+      Object.assign(item, patch);
+      if (patch.text !== undefined)
+        item.coverage =
+          "User-corrected transcript or extraction. Original attachment preserved.";
     });
     res.json({ ok: true });
   });
@@ -1433,8 +1520,20 @@ export async function createApp(
         console.error("Private sync gateway could not start:", e.message);
     }
   }
-  if (!options.test) await relay.load();
-  return { app, vault, providers, errors, devices, relay };
+  if (!options.test) {
+    await relay.load();
+    accounts.start();
+  }
+  return {
+    app,
+    vault,
+    providers,
+    errors,
+    devices,
+    relay,
+    accounts,
+    collaboration,
+  };
 }
 function isLocal(address: string | undefined) {
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address || "");

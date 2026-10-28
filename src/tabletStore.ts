@@ -58,9 +58,16 @@ export async function putPage(value: TabletRecord, oldId?: string) {
   }
 }
 export function newTabletNote(): Note {
+  const theme =
+    typeof document !== "undefined"
+      ? (document.documentElement.dataset.theme as Note["theme"])
+      : undefined;
   return {
     id: crypto.randomUUID(),
     title: "Untitled page",
+    ...(theme && ["light", "dark", "paper", "dotted"].includes(theme)
+      ? { theme }
+      : {}),
     context: "",
     group: "Tablet",
     body: "",

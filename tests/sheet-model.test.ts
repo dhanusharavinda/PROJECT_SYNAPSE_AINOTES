@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   eraseStrokes,
+  rebaseScene,
   finishStroke,
   migrateScene,
   resizeItem,
@@ -74,4 +75,22 @@ it("changes both dimensions of a table while preserving image proportions", () =
       -100,
     ),
   ).toMatchObject({ width: 200, height: 100 });
+});
+
+it("undoes a local object action without removing a collaborator's added object", () => {
+  const before = { height: 600, width: 1100, items: [stroke] },
+    after = { ...before, items: [{ ...stroke, x: 200 }] },
+    other = { ...stroke, id: crypto.randomUUID(), x: 500 };
+  const current = { ...after, items: [...after.items, other] },
+    r = rebaseScene(current, after, before);
+  expect(r.scene.items.map((i) => i.x)).toEqual([100, 500]);
+  expect(r.conflicts).toBe(0);
+});
+it("keeps newer remote changes to the same object when undo would overwrite them", () => {
+  const before = { height: 600, width: 1100, items: [stroke] },
+    after = { ...before, items: [{ ...stroke, x: 200 }] },
+    current = { ...after, items: [{ ...stroke, x: 350 }] };
+  const r = rebaseScene(current, after, before);
+  expect(r.scene.items[0].x).toBe(350);
+  expect(r.conflicts).toBe(1);
 });

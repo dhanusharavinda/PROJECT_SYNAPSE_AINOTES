@@ -22,6 +22,10 @@ import type { Bootstrap, Note, Layer, Relation, Proposal } from "./types";
 import { api, fileUrl } from "./api";
 import { Modal, MD, Busy } from "./ui";
 import Editor, { type EditorHandle } from "./Editor";
+import { nextTheme } from "./themes";
+import { youtubeLink } from "./youtube";
+import { Collaborators } from "./AccountPanel";
+import { fileNameSchema } from "./noteSchema";
 import { bodyOf, lineage } from "./content";
 import DiagramPreview from "./DiagramPreview";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
@@ -52,6 +56,23 @@ export default function NoteView({
 }) {
   const initial = { ...note, body: bodyOf(note) };
   const [draft, setDraft] = useState<Note>(initial);
+  useEffect(() => {
+    const previous = document.documentElement.dataset.theme || "light";
+    document.documentElement.dataset.theme = draft.theme || previous;
+    window.dispatchEvent(new Event("synapse:theme"));
+    const cycle = (e: Event) => {
+      e.stopImmediatePropagation();
+      edit({
+        theme: nextTheme(document.documentElement.dataset.theme || "light"),
+      });
+    };
+    window.addEventListener("synapse:cycle-theme", cycle, true);
+    return () => {
+      window.removeEventListener("synapse:cycle-theme", cycle, true);
+      document.documentElement.dataset.theme = previous;
+      window.dispatchEvent(new Event("synapse:theme"));
+    };
+  }, [draft.id, draft.theme]);
   const latest = useRef<Note>(initial);
   const editorRef = useRef<EditorHandle>(null);
   const sheetRef = useRef<SheetHandle>(null);
@@ -233,6 +254,8 @@ export default function NoteView({
             parentId: edited.parentId,
             canvas: edited.canvas,
             noteDate: edited.noteDate,
+            fileName: edited.fileName,
+            theme: edited.theme,
           }
         : {}),
       body: edited?.body ?? (body === undefined ? bodyOf(n) : body),
@@ -393,9 +416,15 @@ export default function NoteView({
             >
               <Save size={17} />
             </button>
-            <button onClick={() => setModal("share")}>
+            <button
+              onClick={() =>
+                save()
+                  .then(() => setModal("share"))
+                  .catch((e) => notify(e.message))
+              }
+            >
               <Share2 size={14} />
-              Share
+              Collaborators
             </button>
             <button
               className="icon"
@@ -451,6 +480,7 @@ export default function NoteView({
             <input
               className="note-title"
               aria-label="Note title"
+              title="Rename this page"
               value={draft.title}
               onChange={(e) => edit({ title: e.target.value })}
             />
@@ -462,6 +492,47 @@ export default function NoteView({
             </summary>
             <div className="context-row">
               <label>
+                File name
+                <input
+                  aria-label="File name"
+                  key={draft.fileName}
+                  defaultValue={draft.fileName || draft.id + ".md"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  onBlur={(e) => {
+                    const name = e.target.value
+                        .trim()
+                        .replace(/(?:\.md)?$/i, ".md"),
+                      parsed = fileNameSchema.safeParse(name);
+                    if (parsed.success) edit({ fileName: parsed.data });
+                    else
+                      notify(
+                        "Choose a Markdown filename without slashes or special characters.",
+                      );
+                  }}
+                />
+              </label>
+              <label>
+                Page theme
+                <select
+                  aria-label="Page theme"
+                  value={
+                    draft.theme ||
+                    document.documentElement.dataset.theme ||
+                    "light"
+                  }
+                  onChange={(e) =>
+                    edit({ theme: e.target.value as Note["theme"] })
+                  }
+                >
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="paper">Paper</option>
+                  <option value="dotted">Dotted</option>
+                </select>
+              </label>
+              <label>
                 Date (optional)
                 <input
                   aria-label="Note date"
@@ -471,7 +542,7 @@ export default function NoteView({
                 />
               </label>
               <label>
-                Meaning{" "}
+                Topic{" "}
                 <input
                   aria-label="Concept meaning"
                   value={draft.context}
@@ -675,9 +746,20 @@ export default function NoteView({
                     </a>
                   )}
                   {s.url && (
-                    <a href={s.url} target="_blank" rel="noreferrer">
-                      Original
-                    </a>
+                    <>
+                      {youtubeLink(s.url) && (
+                        <button
+                          onClick={() =>
+                            sheetRef.current?.video(s.url!, s.title)
+                          }
+                        >
+                          Insert video
+                        </button>
+                      )}
+                      <a href={s.url} target="_blank" rel="noreferrer">
+                        Open original
+                      </a>
+                    </>
                   )}
                 </div>
               ))}
@@ -685,7 +767,7 @@ export default function NoteView({
                 <p className="muted">
                   Original files and web links you used while learning. Adding
                   them is optional. Upload directly from the note or choose an
-                  item already in Inbox.
+                  item in Resource dump.
                 </p>
               )}
             </details>
@@ -973,6 +1055,7 @@ export default function NoteView({
                 try {
                   const recovered = await api<Note>("/notes", {
                     ...draft,
+                    fileName: undefined,
                     title: draft.title + " (recovered draft)",
                   });
                   dirty.current = false;
@@ -1239,7 +1322,7 @@ export default function NoteView({
             <button onClick={() => command("file")}>Upload PDF or file</button>
           </div>
           <p className="muted small">
-            Already captured something in Inbox? Choose it below.
+            Choose a saved resource below. The original stays in Resource dump.
           </p>
           {data.sources.map((s) => (
             <div className="attach-row" key={s.id}>
@@ -1252,8 +1335,10 @@ export default function NoteView({
                   edit({
                     sources: [...new Set([...latest.current.sources, s.id])],
                   });
-                  if (s.kind === "image" && s.file)
-                    editorRef.current?.insertImage(
+                  if (s.url && youtubeLink(s.url))
+                    sheetRef.current?.video(s.url, s.title);
+                  else if (s.kind === "image" && s.file)
+                    sheetRef.current?.image(
                       "../attachments/" + s.file,
                       s.title,
                     );
@@ -1265,94 +1350,27 @@ export default function NoteView({
                   setModal("");
                 }}
               >
-                {s.kind === "image" ? "Insert image" : "Add reference link"}
+                {s.url && youtubeLink(s.url)
+                  ? "Insert video"
+                  : s.kind === "image"
+                    ? "Insert image"
+                    : "Add link"}
               </button>
             </div>
           ))}
         </Modal>
       )}
       {modal === "share" && (
-        <Modal title="Share this note" onClose={() => setModal("")}>
-          <p className="muted">
-            Only this note and its attached sources are shared. Links are bearer
-            credentials, so share them carefully. Localhost links work on this
-            computer only.
-          </p>
-          <label>
-            Access
-            <select
-              value={shareRole}
-              onChange={(e) => setShareRole(e.target.value)}
-            >
-              <option value="viewer">Viewer: read only</option>
-              <option value="commenter">Commenter: discuss</option>
-              <option value="suggestion">
-                Suggest additions: owner approval required
-              </option>
-              <option value="editor">
-                Editor: directly edit explanation layers
-              </option>
-            </select>
-          </label>
-          <label>
-            Label
-            <input
-              value={shareLabel}
-              onChange={(e) => setShareLabel(e.target.value)}
-              placeholder="Study group, classmate..."
-            />
-          </label>
-          <button
-            className="primary"
-            onClick={() =>
-              action("share", async () => {
-                await api("/shares", {
-                  noteId: draft.id,
-                  role: shareRole,
-                  label: shareLabel,
-                });
-              })
-            }
-          >
-            Create access link
-          </button>
-          {data.shares
-            .filter((s) => s.noteId === draft.id && !s.revoked)
-            .map((s) => (
-              <div className="share-row" key={s.id}>
-                <strong>
-                  {s.label || "Shared note"} · {s.role}
-                </strong>
-                <input
-                  readOnly
-                  aria-label="Share URL"
-                  value={window.location.origin + "/share/" + s.id}
-                  onFocus={(e) => e.target.select()}
-                />
-                <button
-                  onClick={() =>
-                    navigator.clipboard
-                      .writeText(window.location.origin + "/share/" + s.id)
-                      .then(() => notify("Link copied."))
-                      .catch(() =>
-                        notify("Select the link and copy it manually."),
-                      )
-                  }
-                >
-                  Copy
-                </button>
-                <button
-                  className="danger-text"
-                  onClick={() =>
-                    action("revoke", () =>
-                      api("/shares/" + s.id, undefined, "DELETE"),
-                    )
-                  }
-                >
-                  Revoke
-                </button>
-              </div>
-            ))}
+        <Modal title="Collaborators" onClose={() => setModal("")}>
+          <Collaborators
+            note={draft}
+            notify={notify}
+            onChanged={refresh}
+            onOpenShared={() => {
+              setModal("");
+              void refresh();
+            }}
+          />
         </Modal>
       )}
       {modal === "history" && (

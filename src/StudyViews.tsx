@@ -16,10 +16,13 @@ import {
   RefreshCw,
   Mic,
   Search,
+  Bookmark,
 } from "lucide-react";
 import { bodyOf, plainNote } from "./content";
 import { readableText } from "./studyText";
 import AITeacher from "./AITeacher";
+import VideoCard from "./VideoCard";
+import { youtubeLink } from "./youtube";
 import type { Bootstrap, Note, Source, Episode } from "./types";
 import { api, fileUrl } from "./api";
 import { Modal, MD, Busy, Empty } from "./ui";
@@ -29,7 +32,16 @@ type Props = {
   notify: (s: string) => void;
   onOpen: (n: Note) => void;
 };
-export function Inbox({ data, refresh, notify, onOpen }: Props) {
+export function Inbox({
+  data,
+  refresh,
+  notify,
+  onOpen,
+  library = false,
+}: Props & { library?: boolean }) {
+  const [resourceQuery, setResourceQuery] = useState(""),
+    [bookmarksOnly, setBookmarksOnly] = useState(false),
+    [attachNote, setAttachNote] = useState("");
   const [selected, setSelected] = useState<string>();
   const [modal, setModal] = useState(false);
   const [title, setTitle] = useState("");
@@ -42,7 +54,14 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
   const upload = useRef<HTMLInputElement>(null);
   const [showArchived, setShowArchived] = useState(false);
   const visibleSources = data.sources.filter(
-    (s) => !!s.archived === showArchived,
+    (s) =>
+      !!s.archived === showArchived &&
+      (!bookmarksOnly || s.bookmarked) &&
+      [s.title, s.url, s.text]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(resourceQuery.toLowerCase()),
   );
   const source =
     visibleSources.find((s) => s.id === selected) || visibleSources[0];
@@ -69,7 +88,8 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
       <header className="page-heading">
         <div>
           <h1>
-            Your Inbox<span className="title-dot">.</span>
+            {library ? "Resource dump" : "Your Inbox"}
+            <span className="title-dot">.</span>
           </h1>
           <p>
             Keep the source. Find the useful part. Connect it when you’re ready.
@@ -82,7 +102,7 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
           </button>
           <button className="primary" onClick={() => setModal(true)}>
             <Plus size={16} />
-            Capture
+            {library ? "Add resource" : "Capture"}
           </button>
         </div>
       </header>
@@ -115,6 +135,21 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
           Paste a link or text <ArrowUpRight size={14} />
         </button>
       </div>
+      <div className="actions resource-filters">
+        <input
+          aria-label="Search resources"
+          placeholder="Search resources"
+          value={resourceQuery}
+          onChange={(e) => setResourceQuery(e.target.value)}
+        />
+        <button
+          aria-pressed={bookmarksOnly}
+          onClick={() => setBookmarksOnly(!bookmarksOnly)}
+        >
+          <Bookmark size={14} />
+          Bookmarks
+        </button>
+      </div>
       <div className="actions" style={{ marginBottom: 20 }}>
         <button
           className={!showArchived ? "active" : ""}
@@ -123,7 +158,8 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
             setSelected(undefined);
           }}
         >
-          Inbox {data.sources.filter((s) => !s.archived).length}
+          {library ? "All resources" : "Inbox"}{" "}
+          {data.sources.filter((s) => !s.archived).length}
         </button>
         <button
           onClick={() => {
@@ -166,9 +202,13 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
                   <strong>{s.title}</strong>
                   <p>{s.text ? s.text.slice(0, 90) : s.coverage}</p>
                   <small>
-                    {s.text
-                      ? "Ready to read"
-                      : "Needs extraction or a transcript"}
+                    {s.bookmarked
+                      ? "Bookmarked"
+                      : s.url
+                        ? "Saved link"
+                        : s.file
+                          ? "Saved file"
+                          : "Saved text"}
                   </small>
                 </div>
               </button>
@@ -177,6 +217,72 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
           {source && (
             <article className="source-detail">
               <h2>{source.title}</h2>
+              <div className="actions wrap">
+                <button
+                  disabled={!!busy}
+                  aria-pressed={!!source.bookmarked}
+                  onClick={() =>
+                    run("bookmark", () =>
+                      api(
+                        "/sources/" + source.id,
+                        { bookmarked: !source.bookmarked },
+                        "PUT",
+                      ),
+                    )
+                  }
+                >
+                  <Bookmark size={14} />
+                  {source.bookmarked ? "Bookmarked" : "Bookmark"}
+                </button>
+                <label>
+                  Attach to note
+                  <select
+                    aria-label="Attach resource to note"
+                    value={attachNote}
+                    onChange={(e) => setAttachNote(e.target.value)}
+                  >
+                    <option value="">Choose a note</option>
+                    {data.notes.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  disabled={!attachNote || !!busy}
+                  onClick={() =>
+                    run("attach", async () => {
+                      await api("/sources/" + source.id + "/attach", {
+                        noteId: attachNote,
+                      });
+                      notify(
+                        "Resource attached. The original stays in Resource dump.",
+                      );
+                    })
+                  }
+                >
+                  Attach
+                </button>
+              </div>
+              {source.url && youtubeLink(source.url) && (
+                <div className="resource-video" key={source.id}>
+                  <VideoCard url={source.url} title={source.title} />
+                </div>
+              )}
+              {data.notes.some((n) => n.sources.includes(source.id)) && (
+                <div className="resource-attachments">
+                  <span className="muted small">In notes</span>
+                  {data.notes
+                    .filter((n) => n.sources.includes(source.id))
+                    .map((n) => (
+                      <button key={n.id} onClick={() => onOpen(n)}>
+                        {n.title}
+                        <ArrowUpRight size={12} />
+                      </button>
+                    ))}
+                </div>
+              )}
               <p className="coverage">{source.coverage}</p>
               <div className="actions wrap">
                 {source.file && (
@@ -242,13 +348,13 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
                       setSelected(undefined);
                       notify(
                         source.archived
-                          ? "Source restored to Inbox."
+                          ? "Resource restored."
                           : "Source archived. Notes and original files are preserved.",
                       );
                     })
                   }
                 >
-                  {source.archived ? "Restore to Inbox" : "Archive source"}
+                  {source.archived ? "Restore" : "Archive"}
                 </button>
               </div>
               {source.kind === "image" && source.file && (
@@ -369,14 +475,31 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
         </div>
       ) : (
         <Empty
-          title="A clear inbox, a curious mind"
-          text="Capture a resource, then decide what it contributes. Nothing becomes a new branch automatically."
+          title={
+            resourceQuery || bookmarksOnly
+              ? "No matching resources"
+              : showArchived
+                ? "Nothing archived"
+                : library
+                  ? "Your resources, together"
+                  : "Your inbox is empty"
+          }
+          text={
+            resourceQuery || bookmarksOnly
+              ? "Try another search or turn off the bookmark filter."
+              : library
+                ? "Save a link, upload a file, or drop it here. Bookmark favourites and attach them to any note."
+                : "Capture a resource, then decide what it contributes."
+          }
         />
       )}
       {modal && (
-        <Modal title="Capture a source" onClose={() => setModal(false)}>
+        <Modal
+          title={library ? "Add resource" : "Capture a source"}
+          onClose={() => setModal(false)}
+        >
           <label>
-            Title
+            Name (optional for links)
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -406,15 +529,18 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
           </p>
           <button
             className="primary"
-            disabled={!title.trim() || (!text.trim() && !url.trim()) || !!busy}
+            disabled={(!text.trim() && !url.trim()) || !!busy}
             onClick={() =>
               run("capture", async () => {
                 const s = await api<Source>("/sources", {
-                  title,
+                  extract: !library,
+                  title:
+                    title.trim() || url.trim().slice(0, 300) || "Saved text",
                   text,
-                  url: url || undefined,
+                  url: url.trim() || undefined,
                 });
                 setSelected(s.id);
+                setShowArchived(!!s.archived);
                 setTitle("");
                 setText("");
                 setUrl("");
@@ -422,7 +548,8 @@ export function Inbox({ data, refresh, notify, onOpen }: Props) {
               })
             }
           >
-            {busy ? <Busy /> : <Plus size={15} />}Save to Inbox
+            {busy ? <Busy /> : <Plus size={15} />}
+            {library ? "Save resource" : "Save to Inbox"}
           </button>
         </Modal>
       )}

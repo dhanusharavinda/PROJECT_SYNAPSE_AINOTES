@@ -17,6 +17,7 @@ import {
   ImagePlus,
   MousePointer2,
   PenLine,
+  PaintBucket,
   Redo2,
   Square,
   Table2,
@@ -31,6 +32,7 @@ import {
   Moon,
   FileText,
 } from "lucide-react";
+import { regionOnSheet } from "./paintBucket";
 import { penWeight } from "./penStroke";
 import type { CanvasItem, NoteCanvas } from "./types";
 import { fileUrl, mediaUrl } from "./api";
@@ -45,6 +47,7 @@ import VideoPasteMenu from "./VideoPasteMenu";
 import { youtubeLink } from "./youtube";
 import {
   finishStroke,
+  rebaseScene,
   migrateScene,
   resizeItem,
   resizeGroup,
@@ -66,7 +69,8 @@ type Tool =
   | "triangle"
   | "line"
   | "text"
-  | "table";
+  | "table"
+  | "bucket";
 export interface SheetHandle {
   tool: (tool: Tool) => void;
   image: (src: string, alt: string) => void;
@@ -104,6 +108,7 @@ export default forwardRef<
   SheetHandle,
   {
     value?: NoteCanvas;
+    peers?: { cell: string; name: string; color: string }[];
     onChange: (value: NoteCanvas) => void;
     onDrawing: (id: string) => void;
     onImage: () => void;
@@ -112,7 +117,16 @@ export default forwardRef<
     children: ReactNode;
   }
 >(function NotebookSheet(
-  { value, onChange, onDrawing, onImage, onCommand, onUpload, children },
+  {
+    value,
+    onChange,
+    onDrawing,
+    onImage,
+    onCommand,
+    onUpload,
+    children,
+    peers = [],
+  },
   ref,
 ) {
   const [scene, setScene] = useState<NoteCanvas>(value || empty),
@@ -137,8 +151,8 @@ export default forwardRef<
     }>();
   const root = useRef<HTMLDivElement>(null),
     gesture = useRef<Gesture | undefined>(undefined),
-    history = useRef<NoteCanvas[]>([]),
-    future = useRef<NoteCanvas[]>([]);
+    history = useRef<{ before: NoteCanvas; after: NoteCanvas }[]>([]),
+    future = useRef<{ before: NoteCanvas; after: NoteCanvas }[]>([]);
   const [fill, setFill] = useState(false),
     [highlighter, setHighlighter] = useState(false);
   const pasteTarget = useRef<HTMLTextAreaElement>(null);
@@ -270,7 +284,10 @@ export default forwardRef<
     if (paint.current) cancelAnimationFrame(paint.current);
     paint.current = undefined;
     queued.current = undefined;
-    history.current = [...history.current.slice(-99), previous];
+    history.current = [
+      ...history.current.slice(-99),
+      { before: previous, after: next },
+    ];
     future.current = [];
     latest.current = next;
     sent.current = next;
@@ -297,18 +314,46 @@ export default forwardRef<
     setSelected([]);
   }
   function undo() {
-    const previous = history.current.pop();
-    if (previous) {
-      future.current.push(latest.current);
-      emit(previous);
-    }
+    const frame = history.current.pop();
+    if (!frame) return;
+    const current = latest.current,
+      { scene: next, conflicts } = rebaseScene(
+        current,
+        frame.after,
+        frame.before,
+      );
+    if (proseHistory.current.has(frame.before))
+      proseHistory.current.set(next, proseHistory.current.get(frame.before)!);
+    future.current.push({ before: next, after: current });
+    emit(next);
+    if (conflicts)
+      window.dispatchEvent(
+        new CustomEvent("synapse:notice", {
+          detail:
+            "An object changed since your action, so undo kept its newer version.",
+        }),
+      );
   }
   function redo() {
-    const next = future.current.pop();
-    if (next) {
-      history.current.push(latest.current);
-      emit(next);
-    }
+    const frame = future.current.pop();
+    if (!frame) return;
+    const current = latest.current,
+      { scene: next, conflicts } = rebaseScene(
+        current,
+        frame.before,
+        frame.after,
+      );
+    if (proseHistory.current.has(frame.after))
+      proseHistory.current.set(next, proseHistory.current.get(frame.after)!);
+    history.current.push({ before: current, after: next });
+    emit(next);
+    if (conflicts)
+      window.dispatchEvent(
+        new CustomEvent("synapse:notice", {
+          detail:
+            "An object changed since undo, so redo kept its newer version.",
+        }),
+      );
   }
   function focus() {
     active.current = true;
@@ -718,10 +763,49 @@ export default forwardRef<
     if (
       e.button !== 0 ||
       (e.target as HTMLElement).closest(
-        "button,input,.context-menu,.slash-menu,.sheet-context",
+        "button,input,.context-menu,.slash-menu,.sheet-context,iframe",
       )
     )
       return;
+    if (tool === "bucket") {
+      e.preventDefault();
+      e.stopPropagation();
+      const existing = (e.target as HTMLElement).closest<HTMLElement>(
+        ".kind-paint",
+      )?.dataset.objectId;
+      if (existing) {
+        update(existing, { color });
+        return;
+      }
+      const [x, y] = at(e);
+      void regionOnSheet(root.current!, x, y)
+        .then((region) => {
+          const next = {
+            ...base(),
+            items: [
+              {
+                id: crypto.randomUUID(),
+                kind: "paint" as const,
+                x: region.x,
+                y: region.y,
+                width: region.width,
+                height: region.height,
+                text: region.path,
+                points: [[region.width, region.height] as [number, number]],
+                color,
+              },
+              ...base().items,
+            ],
+          };
+          commit(next);
+        })
+        .catch((error) => {
+          window.dispatchEvent(
+            new CustomEvent("synapse:notice", { detail: error.message }),
+          );
+        });
+      return;
+    }
     if (tool === "select") {
       if ((e.target as HTMLElement).closest(".sheet-object")) return;
       begin(e, "select", []);
@@ -729,6 +813,12 @@ export default forwardRef<
       return;
     }
     if (tool === "write" || tool === "text" || tool === "table") {
+      if (
+        (e.target as HTMLElement).closest(
+          ".sheet-object.kind-text,.sheet-object.kind-table,[contenteditable=true] a",
+        )
+      )
+        return;
       if (
         tool === "write" &&
         (e.target as HTMLElement).closest(
@@ -966,6 +1056,11 @@ export default forwardRef<
     )
       return;
     if (e.button !== 0 || !["write", "select"].includes(tool)) return;
+    if (
+      tool === "write" &&
+      (e.target as HTMLElement).closest("a,button,iframe,video")
+    )
+      return;
     fullSelection.current = false;
     if (e.shiftKey) {
       e.preventDefault();
@@ -980,8 +1075,7 @@ export default forwardRef<
     const ids = selected.includes(item.id) ? selected : [item.id];
     setSelected(ids);
     active.current = true;
-    if (tool === "select" || !["text", "table"].includes(item.kind))
-      begin(e, "move", ids);
+    if (tool === "select") begin(e, "move", ids);
   }
   const selectedItems = scene.items.filter((i) => selected.includes(i.id)),
     item = selectedItems.length === 1 ? selectedItems[0] : undefined;
@@ -991,6 +1085,7 @@ export default forwardRef<
       ["pen", "Pen", PenLine],
       ["arrow", "Arrow", ArrowUpRight],
       ["eraser", "Eraser", Eraser],
+      ["bucket", "Paint bucket", PaintBucket],
     ] as const,
     shapeTools = [
       ["rectangle", "Rectangle", Square],
@@ -1354,13 +1449,16 @@ export default forwardRef<
           <div className="sheet-prose">{children}</div>
           {scene.items.map((i, index) => {
             const shape = shapeKinds.includes(i.kind);
+            const peer = peers.find((p) => p.cell === "item/" + i.id);
             return (
               <div
                 key={i.id}
                 data-object-id={i.id}
-                className={`sheet-object kind-${i.kind}${selected.includes(i.id) ? " is-selected" : ""}${resizing && selected.includes(i.id) ? " is-resizing" : ""}`}
+                data-peer-name={peer?.name}
+                className={`sheet-object ${peer ? "has-peer " : ""}kind-${i.kind}${selected.includes(i.id) ? " is-selected" : ""}${resizing && selected.includes(i.id) ? " is-resizing" : ""}`}
                 style={
                   {
+                    "--peer-color": peer?.color,
                     "--object-height":
                       (scene.width ? i.height : (i.height * viewWidth) / 1000) +
                       "px",
@@ -1381,7 +1479,7 @@ export default forwardRef<
                     height: scene.width
                       ? i.height
                       : (i.height * viewWidth) / 1000,
-                    zIndex: index + 2,
+                    zIndex: i.kind === "paint" ? 1 : index + 3,
                   } as CSSProperties
                 }
                 onPointerDown={(e) => objectDown(e, i)}
@@ -1436,6 +1534,7 @@ export default forwardRef<
                       else editors.current.delete(i.id);
                     }}
                     compact
+                    readOnly={!!peer}
                     value={i.text || ""}
                     onChange={(text) => update(i.id, { text })}
                     onCommand={onCommand || (() => {})}
@@ -1467,15 +1566,19 @@ export default forwardRef<
                         setSelected([i.id]);
                         active.current = true;
                       });
-                      if (i.kind === "text")
-                        editor.on("update", () => {
+                      if (i.kind === "text" && !peer) {
+                        const fitText = () => {
+                          if (editor.isDestroyed || gesture.current) return;
                           const needed = editor.view.dom.scrollHeight,
                             saved = latest.current.items.find(
                               (item) => item.id === i.id,
                             );
                           if (saved && needed > saved.height + 2)
                             update(i.id, { height: needed });
-                        });
+                        };
+                        editor.on("update", fitText);
+                        requestAnimationFrame(fitText);
+                      }
                     }}
                   />
                 )}

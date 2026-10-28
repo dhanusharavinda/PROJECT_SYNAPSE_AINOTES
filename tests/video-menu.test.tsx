@@ -23,3 +23,22 @@ it("keeps the link with Escape and keeps keyboard navigation in the menu", () =>
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   expect(onChoose).toHaveBeenCalledWith("link", "YouTube video");
 });
+
+it("opens a video from the full thumbnail and removes playback when closed", async () => {
+  const { default: VideoCard } = await import("../src/VideoCard");
+  const { container, rerender } = render(
+    <VideoCard url="https://youtu.be/M7lc1UVf-VE" title="Player guide" />,
+  );
+  expect(container.querySelector("iframe")).toBeNull();
+  fireEvent.click(screen.getByAltText("Player guide"));
+  expect(container.querySelector("iframe")?.src).toContain(
+    "youtube-nocookie.com/embed/M7lc1UVf-VE",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Close video" }));
+  expect(container.querySelector("iframe")).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Play YouTube: Player guide" }),
+  );
+  rerender(<VideoCard url="https://youtu.be/abcdefghijk" title="Other" />);
+  expect(container.querySelector("iframe")).toBeNull();
+});

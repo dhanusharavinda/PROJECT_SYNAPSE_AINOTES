@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import {
   BookOpen,
+  LibraryBig,
+  Users,
   Inbox as InboxIcon,
   Network,
   Brain,
@@ -30,13 +32,24 @@ import Graph from "./Graph";
 import { Inbox, Review, Audio } from "./StudyViews";
 import Settings from "./Settings";
 import Shared from "./Shared";
+import AccountPanel, { type SharedPage } from "./AccountPanel";
+import SharedNotebook from "./SharedNotebook";
 import BrandMark from "./BrandMark";
 import { nextTheme, type Theme } from "./themes";
 import DesktopUpdates from "./DesktopUpdates";
 import NotesLibrary from "./NotesLibrary";
 import { usePreferences, keyCombination } from "./preferences";
 type View =
-  "notes" | "library" | "graph" | "inbox" | "review" | "audio" | "settings";
+  | "notes"
+  | "accounts"
+  | "shared-page"
+  | "library"
+  | "graph"
+  | "resources"
+  | "inbox"
+  | "review"
+  | "audio"
+  | "settings";
 export default function App() {
   const preferences = usePreferences();
   const [data, setData] = useState<Bootstrap>();
@@ -50,9 +63,11 @@ export default function App() {
     const v = new URLSearchParams(location.search).get("view");
     return [
       "notes",
+      "accounts",
       "library",
       "graph",
       "inbox",
+      "resources",
       "review",
       "audio",
       "settings",
@@ -66,6 +81,10 @@ export default function App() {
   const [selected, setSelected] = useState(
     new URLSearchParams(location.search).get("note") || "",
   );
+  const [remotePage, setRemotePage] = useState<{
+    connection: string;
+    page: SharedPage;
+  }>();
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [create, setCreate] = useState(false);
@@ -87,6 +106,15 @@ export default function App() {
       return "light";
     }
   });
+  const [displayTheme, setDisplayTheme] = useState<Theme>(theme);
+  useEffect(() => {
+    const changed = () =>
+      setDisplayTheme(
+        (document.documentElement.dataset.theme as Theme) || "light",
+      );
+    window.addEventListener("synapse:theme", changed);
+    return () => window.removeEventListener("synapse:theme", changed);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("synapse-theme", theme);
@@ -144,6 +172,11 @@ export default function App() {
   const shared = window.location.pathname.match(
     /^\/share\/([a-zA-Z0-9-]+)$/,
   )?.[1];
+  useEffect(() => {
+    const notice = (e: Event) => notify((e as CustomEvent).detail);
+    window.addEventListener("synapse:notice", notice);
+    return () => window.removeEventListener("synapse:notice", notice);
+  }, []);
   function notify(s: string) {
     setToast(s);
     if (timer.current) clearTimeout(timer.current);
@@ -238,7 +271,7 @@ export default function App() {
         setTimeout(() => searchRef.current?.focus(), 30);
       } else if (action === "theme") {
         event.preventDefault();
-        setTheme((t) => nextTheme(t));
+        window.dispatchEvent(new Event("synapse:cycle-theme"));
       } else if (action === "save") {
         event.preventDefault();
         void saveCurrent.current?.().catch((error) => notify(error.message));
@@ -347,6 +380,8 @@ export default function App() {
           {(
             [
               { id: "library", label: "All notes", Icon: BookOpen },
+              { id: "accounts", label: "Shared with you", Icon: Users },
+              { id: "resources", label: "Resource dump", Icon: LibraryBig },
               {
                 id: "inbox",
                 label: "Inbox",
@@ -468,18 +503,20 @@ export default function App() {
         <div className="sidebar-bottom">
           <button
             className="theme-cycle"
-            aria-label={`Theme: ${theme}. Switch theme`}
+            aria-label={`Theme: ${displayTheme}. Switch theme`}
             title="Light, Dark, Paper"
-            onClick={() => setTheme((t) => nextTheme(t))}
+            onClick={() =>
+              window.dispatchEvent(new Event("synapse:cycle-theme"))
+            }
           >
-            {theme === "light" ? (
+            {displayTheme === "light" ? (
               <Sun size={16} />
-            ) : theme === "dark" ? (
+            ) : displayTheme === "dark" ? (
               <Moon size={16} />
             ) : (
               <FileText size={16} />
             )}
-            {theme.charAt(0).toUpperCase() + theme.slice(1)}
+            {displayTheme.charAt(0).toUpperCase() + displayTheme.slice(1)}
           </button>
           <div className="local-status">
             <span className="live-dot" />
@@ -515,21 +552,23 @@ export default function App() {
               <Menu size={18} />
             </button>
             <span>Synapse</span>
-            {view !== "notes" && (
+            {view !== "notes" && view !== "shared-page" && (
               <button
                 className="compact-theme"
-                aria-label={`Theme: ${theme}. Switch theme`}
+                aria-label={`Theme: ${displayTheme}. Switch theme`}
                 title="Switch theme"
                 onClick={() => setTheme(nextTheme(theme))}
               >
-                {theme === "light" ? (
+                {displayTheme === "light" ? (
                   <Sun size={17} />
-                ) : theme === "dark" ? (
+                ) : displayTheme === "dark" ? (
                   <Moon size={17} />
                 ) : (
                   <FileText size={17} />
                 )}
-                <span>{theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
+                <span>
+                  {displayTheme.charAt(0).toUpperCase() + displayTheme.slice(1)}
+                </span>
               </button>
             )}
           </div>
@@ -553,24 +592,40 @@ export default function App() {
         )}
         {view === "notes" &&
           (note ? (
-            <NoteView
-              key={note.id}
-              note={note}
-              data={data}
-              refresh={refresh}
-              onOpen={(n) => navigate("notes", n)}
-              onLibrary={() => navigate("library")}
-              onPractice={(id) => {
-                setPractice(id);
-                navigate("review");
-              }}
-              onNew={openCreate}
-              notify={notify}
-              onDirty={(d) => (dirty.current = d)}
-              onSaveReady={(save) => {
-                saveCurrent.current = save;
-              }}
-            />
+            data.collaborations?.includes(note.id) ? (
+              <SharedNotebook
+                key={"live-" + note.id}
+                id={note.id}
+                onBack={() => navigate("library")}
+                notify={notify}
+                onOpenNote={(id) => {
+                  const n = data.notes.find((n) => n.id === id);
+                  if (n) navigate("notes", n);
+                  else notify("Open this page from Shared with you.");
+                }}
+                onDirty={(d) => (dirty.current = d)}
+                onSaveReady={(save) => (saveCurrent.current = save)}
+              />
+            ) : (
+              <NoteView
+                key={note.id}
+                note={note}
+                data={data}
+                refresh={refresh}
+                onOpen={(n) => navigate("notes", n)}
+                onLibrary={() => navigate("library")}
+                onPractice={(id) => {
+                  setPractice(id);
+                  navigate("review");
+                }}
+                onNew={openCreate}
+                notify={notify}
+                onDirty={(d) => (dirty.current = d)}
+                onSaveReady={(save) => {
+                  saveCurrent.current = save;
+                }}
+              />
+            )
           ) : (
             <Empty
               title="One idea is a good beginning"
@@ -582,6 +637,62 @@ export default function App() {
               </button>
             </Empty>
           ))}
+        {view === "accounts" && (
+          <AccountPanel
+            notify={notify}
+            onLocal={(id) => {
+              const n = data.notes.find((n) => n.id === id);
+              if (n) navigate("notes", n);
+              else
+                notify(
+                  "This page belongs to another notebook on your account. Open it on the owner's PC.",
+                );
+            }}
+            onOpen={(connection, page) => {
+              setRemotePage({ connection, page });
+              navigate("shared-page");
+            }}
+          />
+        )}
+        {view === "shared-page" && remotePage && (
+          <SharedNotebook
+            key={remotePage.connection}
+            id={remotePage.page.id}
+            connection={remotePage.connection}
+            onBack={() => navigate("accounts")}
+            notify={notify}
+            onDirty={(d) => (dirty.current = d)}
+            onSaveReady={(save) => (saveCurrent.current = save)}
+            onOpenNote={async (id) => {
+              if (dirty.current) {
+                notify("Wait for your changes to save before changing pages.");
+                return;
+              }
+              try {
+                const pages = await api<SharedPage[]>("/account/pages"),
+                  page = pages.find((p) => p.id === id);
+                if (!page)
+                  throw Error(
+                    "This page has not been shared with your account.",
+                  );
+                if (page.role === "owner") {
+                  const n = data.notes.find((n) => n.id === id);
+                  if (n) {
+                    navigate("notes", n);
+                    return;
+                  }
+                }
+                const r = await api("/account/open", {
+                  id: page.id,
+                  room: page.room,
+                });
+                setRemotePage({ connection: r.connection, page });
+              } catch (e) {
+                notify((e as Error).message);
+              }
+            }}
+          />
+        )}
         {view === "graph" && (
           <Graph
             data={data}
@@ -590,8 +701,9 @@ export default function App() {
             notify={notify}
           />
         )}{" "}
-        {view === "inbox" && (
+        {(view === "inbox" || view === "resources") && (
           <Inbox
+            library={view === "resources"}
             data={data}
             refresh={refresh}
             notify={notify}
@@ -743,6 +855,10 @@ export default function App() {
             onClick={async () => {
               try {
                 const n = await api<Note>("/notes", {
+                  theme:
+                    data.notes.find((n) => n.id === creationParent)?.theme ||
+                    document.documentElement.dataset.theme ||
+                    theme,
                   title: newTitle,
                   context: newContext,
                   group: newGroup,

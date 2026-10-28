@@ -8,6 +8,7 @@ export interface CanvasItem {
     | "image"
     | "drawing"
     | "video"
+    | "paint"
     | "pen"
     | "arrow"
     | "rectangle"
@@ -37,6 +38,7 @@ export interface NoteCanvas {
   width?: number;
 }
 export interface Note {
+  fileName?: string;
   id: string;
   title: string;
   context: string;
@@ -56,12 +58,14 @@ export interface Note {
   status: "collected" | "explained" | "practiced";
   revision: number;
   updated: string;
+  theme?: "light" | "dark" | "paper" | "dotted";
   noteDate?: string | null;
   etag?: string;
   archived?: boolean;
   reviewEnabled?: boolean;
 }
 export interface Source {
+  bookmarked?: boolean;
   archived?: boolean;
   id: string;
   title: string;
@@ -155,6 +159,7 @@ export interface State {
   positions: Record<string, { x: number; y: number; pinned: boolean }>;
 }
 export interface Bootstrap extends State {
+  collaborations?: string[];
   notes: Note[];
   config: Config;
 }

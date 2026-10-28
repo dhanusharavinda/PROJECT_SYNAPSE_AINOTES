@@ -50,7 +50,7 @@ export default function CanvasRead({
         }}
       >
         {children && <div className="reading-prose">{children}</div>}
-        {canvas.items.map((item) => {
+        {canvas.items.map((item, index) => {
           const attachment = item.src?.match(
               /^(?:\.\.\/|\/files\/)(attachments|drawings)\/([-a-zA-Z0-9]+\.[a-zA-Z0-9]+)$/,
             ),

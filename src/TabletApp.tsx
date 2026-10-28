@@ -55,6 +55,15 @@ export default function TabletApp() {
     upload = useRef<HTMLInputElement>(null),
     restore = useRef<HTMLInputElement>(null),
     revision = useRef("");
+  const selectedId = useRef(selected);
+  selectedId.current = selected;
+  useEffect(() => {
+    const row = pages.find((p) => p.note.id === selected);
+    if (row?.note.theme) {
+      document.documentElement.dataset.theme = row.note.theme;
+      window.dispatchEvent(new Event("synapse:theme"));
+    }
+  }, [selected, pages.find((p) => p.note.id === selected)?.note.theme]);
   const [writer, setWriter] = useState(false);
   const [scanning, setScanning] = useState(false),
     [pairLink, setPairLink] = useState(""),
@@ -200,6 +209,11 @@ export default function TabletApp() {
     );
     return write;
   }
+  useEffect(() => {
+    const notice = (e: Event) => setError((e as CustomEvent).detail);
+    window.addEventListener("synapse:notice", notice);
+    return () => window.removeEventListener("synapse:notice", notice);
+  }, []);
   function fail(e: unknown) {
     setError(
       e instanceof Error
@@ -249,6 +263,14 @@ export default function TabletApp() {
       const next = nextTheme(
         document.documentElement.dataset.theme || "dotted",
       );
+      const row = ref.current.find((p) => p.note.id === selectedId.current);
+      if (row) {
+        const nextRow = editRecord(row, { ...row.note, theme: next });
+        update(
+          ref.current.map((p) => (p.note.id === row.note.id ? nextRow : p)),
+        );
+        void persist(nextRow).catch(() => {});
+      }
       document.documentElement.dataset.theme = next;
       localStorage.setItem("synapse-tablet-theme", next);
       window.dispatchEvent(new Event("synapse:theme"));

@@ -10,7 +10,24 @@ export const layersSchema = z.object({
   technical: z.string().max(200000),
   implementation: z.string().max(200000),
 });
+export const fileNameSchema = z
+  .string()
+  .trim()
+  .min(4)
+  .max(160)
+  .regex(
+    /^[^<>:"/\\|?*\x00-\x1f]+\.md$/i,
+    "Use a Markdown filename without slashes or special characters.",
+  )
+  .refine(
+    (value) =>
+      !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value) &&
+      !/[. ]\.md$/i.test(value),
+    "Choose another filename.",
+  );
 export const noteSchema = z.object({
+  fileName: fileNameSchema.optional(),
+  theme: z.enum(["light", "dark", "paper", "dotted"]).optional(),
   title: z.string().trim().min(1).max(160),
   context: z.string().max(160),
   group: z
@@ -46,6 +63,7 @@ export const noteSchema = z.object({
               "image",
               "video",
               "drawing",
+              "paint",
               "pen",
               "arrow",
               "rectangle",

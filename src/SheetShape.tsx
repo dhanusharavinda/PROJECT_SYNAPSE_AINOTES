@@ -21,7 +21,7 @@ function SheetShape({ item }: { item: CanvasItem }) {
   return (
     <svg
       className="sheet-shape"
-      viewBox={`0 0 ${w} ${h}`}
+      viewBox={`0 0 ${item.kind === "paint" ? item.points?.[0]?.[0] || w : w} ${item.kind === "paint" ? item.points?.[0]?.[1] || h : h}`}
       preserveAspectRatio="none"
       aria-label={item.kind === "pen" ? "Hand drawing" : item.kind}
       style={{ opacity: item.opacity || 1 }}
@@ -38,7 +38,9 @@ function SheetShape({ item }: { item: CanvasItem }) {
           <path d="M1 1 L6 4 L1 7" {...common} strokeWidth="1.3" />
         </marker>
       </defs>
-      {item.kind === "rectangle" ? (
+      {item.kind === "paint" ? (
+        <path d={item.text || ""} fill={color} />
+      ) : item.kind === "rectangle" ? (
         <rect
           x="4"
           y="4"

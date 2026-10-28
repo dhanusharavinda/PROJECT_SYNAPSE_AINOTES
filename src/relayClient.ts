@@ -38,7 +38,11 @@ export class RelayClient {
   key: Promise<CryptoKey>;
   publicKey: Promise<string>;
   closed = false;
-  constructor(public access: RelayAccess) {
+  constructor(
+    public access: RelayAccess,
+    private socketFactory: (url: URL) => WebSocket = (url) =>
+      new WebSocket(url),
+  ) {
     this.key = sharedKey(access.privateKey, access.hostPublic, access.room);
     this.publicKey = publicFromPrivate(access.privateKey);
   }
@@ -53,7 +57,7 @@ export class RelayClient {
       );
       endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
       endpoint.searchParams.set("client", this.access.client);
-      const ws = (this.socket = new WebSocket(endpoint));
+      const ws = (this.socket = this.socketFactory(endpoint));
       let ready = false;
       const timer = setTimeout(() => {
         ws.close();

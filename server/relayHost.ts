@@ -26,6 +26,10 @@ type Config = {
   origin: string;
 };
 export class RelayHost {
+  onCollaboration?: (
+    client: string,
+    input: any,
+  ) => Promise<import("../src/relayProtocol.js").RelayReply>;
   config?: Config;
   socket?: WebSocket;
   collector = new PacketCollector();
@@ -195,7 +199,8 @@ export class RelayHost {
     if (!this.config) return;
     const peer = this.devices.records.find((r) => r.id === p.client),
       invite = this.invites.get(p.client);
-    if ((!invite || invite < Date.now()) && !peer) return;
+    if ((!invite || invite < Date.now()) && !peer && !this.onCollaboration)
+      return;
     if (peer && peer.relayPublicKey !== p.publicKey) return;
     const packed = this.collector.accept(p);
     if (!packed || this.inflight.has(p.id)) return;
@@ -206,6 +211,28 @@ export class RelayHost {
       aad(c.room, p.client, p.id, "request"),
       packed,
     );
+    if (
+      typeof input.path === "string" &&
+      /^collab\/(snapshot|acquire|change|release|file|upload)$/.test(
+        input.path,
+      ) &&
+      this.onCollaboration
+    ) {
+      if (this.inflight.size >= 8) return;
+      this.inflight.add(p.id);
+      try {
+        const result = await this.onCollaboration(p.client, input);
+        const encrypted = await seal(
+          key,
+          aad(c.room, p.client, p.id, "response"),
+          result,
+        );
+        await sendPackets(this.socket!, p.client, p.id, c.publicKey, encrypted);
+      } finally {
+        this.inflight.delete(p.id);
+      }
+      return;
+    }
     if (
       typeof input.path !== "string" ||
       !/^(connect|notes(?:\?since=[a-zA-Z0-9%_-]*)?|note|file(?:\?folder=(attachments|drawings)&name=[a-f0-9-]{36}\.(png|jpe?g|webp|svg|pdf|json))?)$/.test(

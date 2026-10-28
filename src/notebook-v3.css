@@ -1,5 +1,10 @@
 /* Stable page geometry and quiet, contextual controls. */
-.clean-sheet .tool-write .sheet-object.kind-pen:has(svg[style*="0.32"]) :is(svg, svg *) {pointer-events:none !important;}
+.clean-sheet
+  .tool-write
+  .sheet-object.kind-pen:has(svg[style*="0.32"])
+  :is(svg, svg *) {
+  pointer-events: none !important;
+}
 .sheet-object.kind-text .note-editor p {
   line-height: calc(32px * var(--text-scale, 1)) !important;
   min-height: calc(32px * var(--text-scale, 1));
@@ -703,8 +708,10 @@
 [data-theme="dark"] .clean-sheet .sheet-shape {
   filter: none;
 }
-[data-theme="dark"] .clean-sheet .sheet-shape[aria-label="Hand drawing"] {
-  filter: invert(0.8) hue-rotate(160deg);
+[data-theme="dark"] .clean-sheet .sheet-shape,
+[data-theme="dark"] .drawing-resizer img,
+[data-theme="dark"] .reading-drawing img {
+  filter: none !important;
 }
 @media (max-width: 800px) {
   .library-heading h1 {
@@ -730,5 +737,292 @@
     width: 100% !important;
   }
 }
-.device-pairing .device-qr {padding:16px 0;max-width:440px;}
-.device-pairing .device-qr img {display:block;max-width:100%;height:auto;background:#fff;border-radius:7px;}
+.device-pairing .device-qr {
+  padding: 16px 0;
+  max-width: 440px;
+}
+.device-pairing .device-qr img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 7px;
+}
+[data-theme="dark"] {
+  --surface: #34413a;
+  --canvas: #2c3732;
+  --frame: #303d35;
+  --menu: #3d4b42;
+  --code: #29362f;
+  --ink: #edf2e9;
+  --muted: #c1cdbf;
+  --line: #5e6e61;
+  --pale: #465c4c;
+  --green: #a8d2b2;
+  background: var(--canvas);
+  color: var(--ink);
+  --glass: rgba(51, 65, 56, 0.94);
+}
+[data-theme="dark"] :is(.sidebar, .connections-panel, .graph-groups) {
+  background: #303e35;
+}
+.note-video img {
+  object-fit: fill;
+}
+.note-video .video-picture iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.note-video .play-video {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 50%;
+  background: #fffef0e8;
+  color: #24392f;
+  border: 1px solid #dbe3d5;
+}
+.note-video .close-video {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  z-index: 1;
+}
+.note-video > a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  font:
+    12px Inter,
+    sans-serif;
+}
+.clean-sheet .tool-bucket .sheet-prose {
+  pointer-events: none;
+}
+.clean-sheet .tool-bucket {
+  cursor: crosshair;
+}
+.clean-sheet .sheet-object.kind-paint {
+  pointer-events: none;
+}
+.clean-sheet .tool-select .sheet-object.kind-paint {
+  pointer-events: auto;
+}
+.clean-sheet .sheet-object.kind-paint path {
+  pointer-events: visiblePainted;
+}
+
+.note-video .preview-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  display: block;
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+}
+.note-video .preview-video:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -3px;
+}
+.note-video .preview-unavailable {
+  display: block;
+  padding: 30px 20px 60px;
+  font-size: 13px;
+}
+.resource-video {
+  height: 300px;
+  max-width: 560px;
+  margin: 20px 0;
+}
+.resource-attachments {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.resource-filters {
+  margin: 20px 0;
+}
+.resource-filters input {
+  flex: 1;
+  min-width: 150px;
+}
+.source-detail > .actions > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.source-detail > .actions > label select {
+  max-width: 220px;
+}
+.source-card strong {
+  overflow-wrap: anywhere;
+}
+.resource-filters [aria-pressed="true"] {
+  color: var(--green);
+  background: var(--pale);
+}
+@media (max-width: 700px) {
+  .resource-video {
+    height: 250px;
+  }
+  .source-detail > .actions > label {
+    flex-wrap: wrap;
+  }
+  .resource-filters {
+    flex-wrap: wrap;
+  }
+}
+
+.shared-notebook {
+  width: 100%;
+  padding: 24px 36px 60px;
+}
+.shared-notebook .note-title {
+  width: 100%;
+  margin: 22px 0 14px;
+}
+.shared-notebook .page-details {
+  margin-bottom: 24px;
+}
+.live-people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 12px 0;
+}
+.live-people span {
+  padding: 3px 8px;
+  border-bottom: 2px solid transparent;
+}
+.clean-sheet .sheet-object.has-peer {
+  outline: 1px solid var(--peer-color) !important;
+}
+.clean-sheet .sheet-object.has-peer::after {
+  content: attr(data-peer-name);
+  position: absolute;
+  top: -19px;
+  right: 0;
+  background: var(--peer-color);
+  color: #24392f;
+  font:
+    11px/1.4 Inter,
+    sans-serif;
+  padding: 2px 5px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.account-signin {
+  max-width: 620px;
+  padding: 32px 0;
+}
+.account-signin p {
+  line-height: 1.7;
+}
+.account-identity {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.shared-page-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+.shared-page-list > button {
+  padding: 18px 4px;
+  display: flex;
+  gap: 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.shared-page-list > button > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.shared-page-list small {
+  color: var(--muted);
+}
+.invite-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+.invite-controls input {
+  flex: 1;
+  min-width: 180px;
+}
+.collaborator-list > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.collaborator-list span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.signin-page {
+  max-width: 520px;
+  margin: 12vh auto;
+  padding: 32px;
+  font-family: Inter, sans-serif;
+}
+.signin-page > svg {
+  width: 42px;
+  height: 42px;
+}
+.signin-page p {
+  line-height: 1.7;
+  color: var(--muted);
+}
+@media (max-width: 700px) {
+  .shared-notebook {
+    padding: 16px;
+  }
+  .shared-notebook .note-topbar {
+    flex-wrap: wrap;
+  }
+  .account-identity {
+    flex-wrap: wrap;
+  }
+  .signin-page {
+    margin: 6vh auto;
+    padding: 24px;
+  }
+}
+
+.clean-sheet .sheet-prose,
+.reading-prose {
+  position: relative;
+  z-index: 2;
+}
