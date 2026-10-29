@@ -232,6 +232,8 @@ export class Vault {
   async writeUnlocked(n: Note, expected?: number) {
     safeId(n.id);
     noteSchema.parse(n);
+    // Optional fields must be omitted, since YAML cannot encode JavaScript undefined.
+    n = JSON.parse(JSON.stringify(n));
     const all = await this.notes(true);
     const old = all.find((x) => x.id === n.id);
     if (!old && expected !== undefined)

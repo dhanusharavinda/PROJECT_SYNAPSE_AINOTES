@@ -73,6 +73,7 @@ export class RelayClient {
         ),
       );
       ws.addEventListener("message", (event) => {
+        if (this.socket !== ws) return;
         void (async () => {
           const data = JSON.parse(String(event.data));
           if (data.type === "ready") {
@@ -126,6 +127,7 @@ export class RelayClient {
         clearTimeout(timer);
         if (!ready)
           reject(Error("Pairing expired or the connection is unavailable."));
+        if (this.socket !== ws) return;
         this.collector.clear();
         for (const p of this.pending.values()) {
           clearTimeout(p.timer);

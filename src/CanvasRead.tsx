@@ -55,7 +55,22 @@ export default function CanvasRead({
           transformOrigin: "top left",
         }}
       >
-        {children && <div className="reading-prose">{children}</div>}
+        {children && (
+          <div
+            className="reading-prose"
+            style={
+              canvas.prose
+                ? {
+                    width: canvas.prose.width,
+                    height: canvas.prose.height,
+                    overflow: "auto",
+                  }
+                : undefined
+            }
+          >
+            {children}
+          </div>
+        )}
         {canvas.items.map((item, index) => {
           const attachment = item.src?.match(
               /^(?:\.\.\/|\/files\/)(attachments|drawings)\/([-a-zA-Z0-9]+\.[a-zA-Z0-9]+)$/,

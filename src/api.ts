@@ -37,8 +37,10 @@ export async function api<T = any>(
   url: string,
   body?: unknown,
   method?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(companion + "/api" + url, {
+    signal,
     method: method || (body === undefined ? "GET" : "POST"),
     headers: {
       ...(body instanceof FormData

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search, Trash2, ChevronRight } from "lucide-react";
+import { noteTree } from "./noteTree";
 import type { Note } from "./types";
 import { noteSummary } from "./content";
 import SlidesExport from "./SlidesExport";
@@ -25,6 +26,7 @@ export default function NotesLibrary({
   }, [notes]);
   const groups = [...new Set(notes.map((n) => n.group))].sort();
   const [slidesOpen, setSlidesOpen] = useState(false);
+  const [expanded, setExpanded] = useState(new Set<string>());
   const filtered = notes
     .filter(
       (n) =>
@@ -42,6 +44,18 @@ export default function NotesLibrary({
           ? (b.noteDate || "").localeCompare(a.noteDate || "")
           : b.updated.localeCompare(a.updated),
     );
+  const rows = noteTree(
+    [...notes].sort((a, b) =>
+      order === "title"
+        ? a.title.localeCompare(b.title)
+        : order === "date"
+          ? (b.noteDate || "").localeCompare(a.noteDate || "")
+          : b.updated.localeCompare(a.updated),
+    ),
+    expanded,
+    query || group ? new Set(filtered.map((n) => n.id)) : undefined,
+  );
+  const visible = rows.map((r) => r.note);
   return (
     <div className="notes-library workspace-page">
       <header className="library-heading">
@@ -118,12 +132,12 @@ export default function NotesLibrary({
                   type="checkbox"
                   aria-label="Select all visible notes"
                   checked={
-                    !!filtered.length &&
-                    filtered.every((n) => selected.includes(n.id))
+                    !!visible.length &&
+                    visible.every((n) => selected.includes(n.id))
                   }
                   onChange={(e) =>
                     setSelected(
-                      e.target.checked ? filtered.map((n) => n.id) : [],
+                      e.target.checked ? visible.map((n) => n.id) : [],
                     )
                   }
                 />
@@ -135,7 +149,7 @@ export default function NotesLibrary({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((n) => (
+            {rows.map(({ note: n, depth, count }) => (
               <tr key={n.id}>
                 <td>
                   <input
@@ -152,10 +166,34 @@ export default function NotesLibrary({
                   />
                 </td>
                 <td>
-                  <button className="library-note" onClick={() => onOpen(n)}>
-                    <strong>{n.title}</strong>
-                    <span>{noteSummary(n).slice(0, 100) || n.context}</span>
-                  </button>
+                  <div
+                    className="library-tree-name"
+                    style={{ paddingLeft: Math.min(depth, 12) * 20 }}
+                  >
+                    {count > 0 ? (
+                      <button
+                        className="tree-toggle"
+                        aria-label={`${expanded.has(n.id) ? "Collapse" : "Expand"} ${n.title}`}
+                        aria-expanded={!!(query || group) || expanded.has(n.id)}
+                        onClick={() =>
+                          setExpanded((old) => {
+                            const next = new Set(old);
+                            next.has(n.id) ? next.delete(n.id) : next.add(n.id);
+                            return next;
+                          })
+                        }
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                    ) : (
+                      <span className="tree-spacer" />
+                    )}
+                    <button className="library-note" onClick={() => onOpen(n)}>
+                      <strong>{n.title}</strong>
+                      <span>{noteSummary(n).slice(0, 100) || n.context}</span>
+                    </button>
+                    {count > 0 && <small className="tree-count">{count}</small>}
+                  </div>
                 </td>
                 <td>{n.group}</td>
                 <td>

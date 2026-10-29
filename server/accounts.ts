@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import WebSocket from "ws";
 import { z } from "zod";
+import { noteSchema } from "../src/noteSchema.js";
 import { AppError, atomic, uid, type Vault } from "./vault.js";
 import { Collaboration, type Principal } from "./collaboration.js";
 import type { RelayHost } from "./relayHost.js";
@@ -254,6 +255,51 @@ export class Accounts {
       if (principal.localOwner)
         principal.email = c.membership(id)?.owner || principal.email;
       c.role(id, principal);
+      if (action === "create-page") {
+        if (c.role(id, principal) === "viewer")
+          throw new AppError(403, "Only editors can create a subpage.");
+        const { title, operation } = z
+          .object({
+            title: z.string().trim().min(1).max(160),
+            operation: z.string().uuid(),
+          })
+          .parse(body);
+        const parent = await this.vault.note(id);
+        if (parent.archived)
+          throw new AppError(404, "The parent page is archived.");
+        const child = await this.vault.serial(async () => {
+          const existing = await this.vault.note(operation).catch((e) => {
+            if (e instanceof AppError && e.status === 404) return undefined;
+            throw e;
+          });
+          if (existing) {
+            if (existing.parentId !== id)
+              throw new AppError(409, "Page identity is already used.");
+            return existing;
+          }
+          return this.vault.writeUnlocked({
+            ...noteSchema.parse({
+              title,
+              parentId: id,
+              theme: parent.theme,
+              context: "",
+              group: parent.group,
+              layers: { intuition: "", technical: "", implementation: "" },
+              body: "",
+              links: [],
+              sources: [],
+              drawings: [],
+              status: "collected",
+            }),
+            id: operation,
+            revision: 0,
+            updated: "",
+          });
+        });
+        c.broadcast(id, { type: "children" });
+        void this.sweepIndex(true).catch(() => {});
+        return { status: 200, data: { id: child.id, title: child.title } };
+      }
       if (action === "open") {
         const target = z.string().uuid().parse(body.target);
         const role = c.role(target, principal);
@@ -269,6 +315,7 @@ export class Accounts {
             id,
             principal,
             z.number().int().min(0).optional().parse(body.cursor),
+            z.number().int().min(0).optional().parse(body.revision),
           ),
         };
       if ((await this.vault.note(id)).archived && !localOwner)
@@ -301,6 +348,7 @@ export class Accounts {
               )
               .max(200)
               .parse(body.changes),
+            z.string().uuid().optional().parse(body.operation),
           ),
         };
       if (action === "release") {
@@ -548,6 +596,7 @@ export class Accounts {
           "change",
           "release",
           "upload",
+          "create-page",
         ].includes(q.params.action)
       )
         throw new AppError(400, "Unknown operation.");
@@ -622,13 +671,14 @@ export class Accounts {
             q.params.id,
             p,
             z.number().int().min(0).optional().parse(b.cursor),
+            z.number().int().min(0).optional().parse(b.revision),
           ),
         );
-      if (q.params.action === "upload") {
+      if (["upload", "create-page"].includes(q.params.action)) {
         const result = await this.dispatch(
           "owner",
           {
-            path: "collab/upload",
+            path: "collab/" + q.params.action,
             token: this.session?.token,
             body: { ...b, id: q.params.id },
           },
@@ -662,6 +712,7 @@ export class Accounts {
               )
               .max(200)
               .parse(b.changes),
+            z.string().uuid().optional().parse(b.operation),
           ),
         );
       if (q.params.action === "release") {

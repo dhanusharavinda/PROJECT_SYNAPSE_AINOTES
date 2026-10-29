@@ -4,7 +4,7 @@
   "description": "A local-first study notebook with an intentional knowledge graph.",
   "author": "Dhanusha Ravinda",
   "private": true,
-  "version": "1.8.3",
+  "version": "1.9.0",
   "type": "module",
   "main": "desktop-dist/main.mjs",
   "scripts": {

@@ -42,6 +42,60 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+it("resizes the main writing area horizontally and vertically, then undoes that change", () => {
+  const change = vi.fn();
+  render(
+    <NotebookSheet
+      value={{
+        width: 1000,
+        height: 600,
+        prose: { width: 400, height: 200 },
+        items: [],
+      }}
+      onChange={change}
+      onDrawing={() => {}}
+      onImage={() => {}}
+    >
+      <p>Long explanation</p>
+    </NotebookSheet>,
+  );
+  const writing = document.querySelector(".sheet-prose")!;
+  writing.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 400,
+    bottom: 200,
+    width: 400,
+    height: 200,
+    toJSON() {
+      return {};
+    },
+  });
+  fireEvent.pointerDown(screen.getByLabelText("Resize writing area"), {
+    button: 0,
+    pointerId: 1,
+    clientX: 400,
+    clientY: 200,
+  });
+  const sheet = screen.getByRole("group", {
+    name: "Write and draw on this page",
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 1, clientX: 600, clientY: 300 });
+  fireEvent.pointerUp(sheet, { pointerId: 1, clientX: 600, clientY: 300 });
+  expect(change.mock.calls.at(-1)![0].prose).toEqual({
+    width: 600,
+    height: 300,
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Undo", exact: false } as any),
+  );
+  expect(change.mock.calls.at(-1)![0].prose).toEqual({
+    width: 400,
+    height: 200,
+  });
+});
 it("allows a link click with Select without starting a selection gesture", () => {
   const ref = React.createRef<SheetHandle>(),
     change = vi.fn(),

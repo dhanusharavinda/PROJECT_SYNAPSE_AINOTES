@@ -34,6 +34,7 @@ import Settings from "./Settings";
 import Shared from "./Shared";
 import AccountPanel, { type SharedPage } from "./AccountPanel";
 import SharedNotebook from "./SharedNotebook";
+import { noteTree } from "./noteTree";
 import BrandMark from "./BrandMark";
 import { nextTheme, type Theme } from "./themes";
 import DesktopUpdates from "./DesktopUpdates";
@@ -86,6 +87,7 @@ export default function App() {
     page: SharedPage;
   }>();
   const [query, setQuery] = useState("");
+  const [expandedNotes, setExpandedNotes] = useState(new Set<string>());
   const [toast, setToast] = useState("");
   const [create, setCreate] = useState(false);
   const [creationParent, setCreationParent] = useState<string | null>(null);
@@ -502,8 +504,32 @@ export default function App() {
             </div>
           )}
           <div className="note-list">
-            {filtered.map((n) => (
-              <div key={n.id} className="note-list-row">
+            {noteTree(
+              data.notes,
+              expandedNotes,
+              query ? new Set(filtered.map((n) => n.id)) : undefined,
+            ).map(({ note: n, depth, count }) => (
+              <div
+                key={n.id}
+                className="note-list-row"
+                style={{ paddingLeft: Math.min(depth, 8) * 12 }}
+              >
+                {count > 0 && (
+                  <button
+                    className="tree-toggle"
+                    aria-label={`${expandedNotes.has(n.id) ? "Collapse" : "Expand"} ${n.title}`}
+                    aria-expanded={!!query || expandedNotes.has(n.id)}
+                    onClick={() =>
+                      setExpandedNotes((old) => {
+                        const next = new Set(old);
+                        next.has(n.id) ? next.delete(n.id) : next.add(n.id);
+                        return next;
+                      })
+                    }
+                  >
+                    <ChevronDown size={12} />
+                  </button>
+                )}
                 {bulk && (
                   <input
                     type="checkbox"

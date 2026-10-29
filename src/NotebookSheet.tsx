@@ -89,7 +89,8 @@ export interface SheetHandle {
   block: (kind: "table" | "text", markdown: string) => void;
 }
 type Gesture = {
-  type: "move" | "resize" | "rotate" | "draw" | "erase" | "select";
+  type:
+    "move" | "resize" | "resize-prose" | "rotate" | "draw" | "erase" | "select";
   origin: NoteCanvas;
   start: Point;
   last: Point;
@@ -98,6 +99,7 @@ type Gesture = {
   kind?: Tool;
   lastTime?: number;
   pointerId?: number;
+  proseSize?: { width: number; height: number };
 };
 const empty: NoteCanvas = { items: [], height: 500 },
   tableText =
@@ -850,6 +852,20 @@ export default forwardRef<
       kind,
       lastTime: e.timeStamp,
       pointerId: e.pointerId,
+      ...(type === "resize-prose"
+        ? {
+            proseSize: {
+              width:
+                root
+                  .current!.querySelector<HTMLElement>(".sheet-prose")!
+                  .getBoundingClientRect().width / zoomRef.current,
+              height:
+                root
+                  .current!.querySelector<HTMLElement>(".sheet-prose")!
+                  .getBoundingClientRect().height / zoomRef.current,
+            },
+          }
+        : {}),
     };
     if (next !== origin) preview(next);
     root.current?.setPointerCapture(e.pointerId);
@@ -1030,6 +1046,19 @@ export default forwardRef<
     const point = at(e),
       dx = point[0] - g.start[0],
       dy = point[1] - g.start[1];
+    if (g.type === "resize-prose") {
+      const prose = {
+        width: Math.max(80, g.proseSize!.width + dx),
+        height: Math.max(32, g.proseSize!.height + dy),
+      };
+      preview({
+        ...latest.current,
+        prose,
+        width: Math.max(latest.current.width || 1000, prose.width),
+        height: Math.max(latest.current.height, prose.height + 40),
+      });
+      return;
+    }
     if (g.type === "select") {
       const box = {
         x: Math.min(point[0], g.start[0]),
@@ -1725,8 +1754,25 @@ export default forwardRef<
         >
           <div
             className={`sheet-prose${studyLens && selected.length ? " is-lens-dimmed" : ""}`}
+            style={
+              scene.prose
+                ? { width: scene.prose.width, height: scene.prose.height }
+                : undefined
+            }
           >
-            {children}
+            <div
+              className={
+                scene.prose ? "prose-writing prose-sized" : "prose-writing"
+              }
+            >
+              {children}
+            </div>
+            <button
+              className="prose-resize"
+              aria-label="Resize writing area"
+              title="Resize writing area"
+              onPointerDown={(e) => begin(e, "resize-prose", [])}
+            />
           </div>
           {scene.items.map((i, index) => {
             const shape = shapeKinds.includes(i.kind);
@@ -1879,7 +1925,11 @@ export default forwardRef<
                             saved = latest.current.items.find(
                               (item) => item.id === i.id,
                             );
-                          if (saved && needed > saved.height + 2)
+                          if (
+                            saved &&
+                            !saved.fitted &&
+                            needed > saved.height + 2
+                          )
                             update(i.id, { height: needed });
                         };
                         editor.on("update", fitText);

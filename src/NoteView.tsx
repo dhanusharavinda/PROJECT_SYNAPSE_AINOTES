@@ -752,8 +752,8 @@ export default function NoteView({
             </button>
           </div>
           {data.notes.some((n) => n.parentId === draft.id) && (
-            <section className="child-pages">
-              <span className="section-label">Pages inside this page</span>
+            <details className="child-pages">
+              <summary>Pages inside this page</summary>
               {data.notes
                 .filter((n) => n.parentId === draft.id)
                 .map((n) => (
@@ -766,7 +766,7 @@ export default function NoteView({
                     <ArrowUpRight size={13} />
                   </button>
                 ))}
-            </section>
+            </details>
           )}
           <section className="note-sources">
             <details>

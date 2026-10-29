@@ -24,6 +24,9 @@ vi.mock("../src/NotebookSheet", async () => {
       <div>
         {children}
         <button onClick={() => onCommand("flowchart")}>Make a diagram</button>
+        <button onClick={() => onCommand("page")}>
+          Create nested page command
+        </button>
       </div>
     )),
   };
@@ -84,6 +87,40 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+it("creates a page from the shared slash-command handler and opens it in the app", async () => {
+  const original = mock.call.getMockImplementation()!,
+    id = crypto.randomUUID(),
+    open = vi.fn();
+  mock.call.mockImplementation((url: string, body: any) =>
+    url.endsWith("create-page")
+      ? Promise.resolve({ id, title: body.title })
+      : original(url, body),
+  );
+  render(
+    <SharedNotebook
+      id={note.id}
+      connection="test"
+      notify={() => {}}
+      onOpenNote={open}
+      onBack={() => {}}
+    />,
+  );
+  await screen.findByLabelText("Body");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create nested page command" }),
+  );
+  fireEvent.change(screen.getByLabelText("Page name"), {
+    target: { value: "Child" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create page" }));
+  await waitFor(() => expect(open).toHaveBeenCalledWith(id));
+  expect(note.body).toContain(id + ".md");
+  expect(
+    mock.call.mock.calls.some(
+      (call) => call[0].endsWith("create-page") && call[1].title === "Child",
+    ),
+  ).toBe(true);
 });
 it("releases a focused field after editing becomes idle", async () => {
   vi.useFakeTimers();
@@ -173,7 +210,7 @@ it("waits and automatically retries a busy editor lock without showing a destruc
   fireEvent.change(await screen.findByLabelText("Body"), {
     target: { value: "Queued explanation" },
   });
-  await screen.findByText(/Waiting for the other editor/);
+  await screen.findByText("Waiting to sync");
   expect(
     screen.queryByRole("button", { name: "Reload saved version" }),
   ).toBeNull();

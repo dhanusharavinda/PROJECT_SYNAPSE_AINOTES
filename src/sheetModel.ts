@@ -67,17 +67,8 @@ export function resizeItem(
     ...item,
     width,
     height,
-    textScale:
-      item.kind === "text"
-        ? Math.max(
-            0.2,
-            Math.min(
-              20,
-              (item.textScale || 1) *
-                Math.max(width / item.width, height / item.height),
-            ),
-          )
-        : item.textScale,
+    textScale: item.textScale,
+    fitted: item.kind === "text" ? true : item.fitted,
     points:
       item.kind === "paint"
         ? item.points
@@ -128,6 +119,10 @@ export function resizeGroup(
             i.height * (sy - 1),
           ),
           rotation: i.rotation,
+          textScale:
+            i.kind === "text"
+              ? Math.max(0.2, Math.min(20, (i.textScale || 1) * sx))
+              : i.textScale,
           x: x + (i.x - x) * sx,
           y: y + (i.y - y) * sy,
         }
@@ -336,6 +331,10 @@ export function rebaseScene(
     scene: {
       ...current,
       width: current.width === from.width ? to.width : current.width,
+      prose:
+        JSON.stringify(current.prose) === JSON.stringify(from.prose)
+          ? to.prose
+          : current.prose,
       height: Math.max(
         current.height === from.height ? to.height : current.height,
         ...items.map((i) => i.y + i.height + 24),

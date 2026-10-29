@@ -28,17 +28,104 @@ afterEach(async () => {
   for (const p of a.accounts.peers.values()) p.client.close();
   await fs.rm(root, { recursive: true, force: true });
 });
+it("creates a local shared subpage when the parent has no explicit theme", async () => {
+  const parent = (
+    await owner("/api/notes").send({ title: "Themeless parent" }).expect(201)
+  ).body;
+  const operation = crypto.randomUUID();
+  await owner("/api/collaboration/local/" + parent.id + "/create-page")
+    .send({ title: "Child", operation })
+    .expect(200);
+  expect(await a.vault.note(operation)).toMatchObject({
+    title: "Child",
+    parentId: parent.id,
+  });
+  const child = await a.vault.note(operation);
+  await a.vault.write(
+    {
+      ...child,
+      canvas: { width: 1000, height: 500, prose: undefined, items: [] },
+    },
+    child.revision,
+  );
+  expect((await a.vault.note(operation)).canvas?.prose).toBeUndefined();
+});
+it("creates nested shared pages for editors, inherits theme and permissions, and returns authorized breadcrumbs", async () => {
+  const parent = (
+    await owner("/api/notes").send({
+      title: "Parent",
+      theme: "paper",
+      group: "Study",
+    })
+  ).body;
+  await a.collaboration.invite(
+    parent.id,
+    {
+      session: "owner",
+      email: "owner@example.test",
+      name: "Owner",
+      localOwner: true,
+    },
+    "editor@example.test",
+    "editor",
+  );
+  await a.collaboration.invite(
+    parent.id,
+    {
+      session: "owner",
+      email: "owner@example.test",
+      name: "Owner",
+      localOwner: true,
+    },
+    "viewer@example.test",
+    "viewer",
+  );
+  vi.spyOn(a.accounts, "identity").mockImplementation(async (token) => ({
+    sub: token || "",
+    email: token === "editor" ? "editor@example.test" : "viewer@example.test",
+    name: "Member",
+    nonce: "",
+    expires: Date.now() + 60000,
+  }));
+  const operation = crypto.randomUUID(),
+    input = {
+      path: "collab/create-page",
+      token: "editor",
+      body: { id: parent.id, title: "Child", operation },
+    };
+  expect((await a.accounts.dispatch("editor-client", input)).status).toBe(200);
+  expect((await a.accounts.dispatch("editor-client", input)).status).toBe(200);
+  expect(await a.vault.notes()).toHaveLength(2);
+  expect(await a.vault.note(operation)).toMatchObject({
+    theme: "paper",
+    group: "Study",
+    parentId: parent.id,
+  });
+  const child = await a.accounts.dispatch("editor-client", {
+    path: "collab/snapshot",
+    token: "editor",
+    body: { id: operation },
+  });
+  expect(child.data.lineage).toEqual([{ id: parent.id, title: "Parent" }]);
+  expect(
+    (
+      await a.accounts.dispatch("viewer-client", {
+        ...input,
+        token: "viewer",
+        body: { ...input.body, operation: crypto.randomUUID() },
+      })
+    ).status,
+  ).toBe(403);
+});
 it("keeps the parent connection usable in other windows when opening a shared subpage", async () => {
   const key = crypto.randomUUID(),
     parent = crypto.randomUUID(),
     child = crypto.randomUUID();
   const client = {
-    request: vi
-      .fn()
-      .mockResolvedValue({
-        status: 200,
-        data: { id: child, title: "Child", role: "viewer" },
-      }),
+    request: vi.fn().mockResolvedValue({
+      status: 200,
+      data: { id: child, title: "Child", role: "viewer" },
+    }),
     close: vi.fn(),
   } as any;
   a.accounts.peers.set(key, {

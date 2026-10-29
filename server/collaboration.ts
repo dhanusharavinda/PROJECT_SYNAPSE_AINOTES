@@ -38,6 +38,7 @@ export function cellValue(note: Note, cell: string): unknown {
     return {
       width: note.canvas?.width || 1100,
       height: note.canvas?.height || 500,
+      ...(note.canvas?.prose ? { prose: note.canvas.prose } : {}),
     };
   if (cell.startsWith("item/"))
     return note.canvas?.items.find((i) => i.id === cell.slice(5)) ?? null;
@@ -61,16 +62,22 @@ export function noteCells(note: Note) {
   );
 }
 export class Collaboration {
+  receipts = new Map<
+    string,
+    { fingerprint: string; note: Note; bytes: number }
+  >();
+  receiptBytes = 0;
   roster: Record<string, Membership> = {};
   presence = new Map<string, Map<string, Presence>>();
   listeners = new Map<string, Set<(event: unknown) => void>>();
   parents = new Map<string, string>();
+  titles = new Map<string, string>();
   versions = new Map<string, number>();
   async syncHierarchy() {
+    const notes = await this.vault.notes();
+    this.titles = new Map(notes.map((n) => [n.id, n.title]));
     this.parents = new Map(
-      (await this.vault.notes())
-        .filter((n) => n.parentId)
-        .map((n) => [n.id, n.parentId!]),
+      notes.filter((n) => n.parentId).map((n) => [n.id, n.parentId!]),
     );
   }
   membership(id: string): Membership | undefined {
@@ -98,7 +105,7 @@ export class Collaboration {
         }
       : undefined;
   }
-  async watch(id: string, p: Principal, cursor?: number) {
+  async watch(id: string, p: Principal, cursor?: number, revision?: number) {
     await this.syncHierarchy();
     this.role(id, p);
     if (
@@ -123,9 +130,18 @@ export class Collaboration {
         }
       });
     }
+    const snapshot = await this.snapshot(id, p);
+    if (revision === snapshot.note.revision)
+      return {
+        cursor: this.versions.get(id) || 0,
+        presence: snapshot.presence,
+        session: snapshot.session,
+        role: snapshot.role,
+        lineage: snapshot.lineage,
+      };
     return {
       cursor: this.versions.get(id) || 0,
-      snapshot: await this.snapshot(id, p),
+      snapshot,
     };
   }
   constructor(private vault: Vault) {}
@@ -264,8 +280,23 @@ export class Collaboration {
     await this.syncHierarchy();
     const role = this.role(id, p),
       note = await this.vault.note(id);
+    const lineage: { id: string; title: string }[] = [],
+      seen = new Set([id]);
+    let parent = this.parents.get(id);
+    while (parent && !seen.has(parent) && lineage.length < 30) {
+      seen.add(parent);
+      try {
+        this.role(parent, p);
+        lineage.unshift({
+          id: parent,
+          title: this.titles.get(parent) || "Page",
+        });
+      } catch {}
+      parent = this.parents.get(parent);
+    }
     return {
       note,
+      lineage,
       cells: noteCells(note),
       role,
       session: p.session,
@@ -317,7 +348,12 @@ export class Collaboration {
         peers!.delete(key);
     this.broadcast(id, { type: "presence", presence: this.active(id) });
   }
-  async change(id: string, p: Principal, changes: CellChange[]) {
+  async change(
+    id: string,
+    p: Principal,
+    changes: CellChange[],
+    operation?: string,
+  ) {
     if (this.role(id, p) === "viewer")
       throw new AppError(403, "Viewer access does not allow editing.");
     if (!changes.length || changes.length > 200)
@@ -326,6 +362,50 @@ export class Collaboration {
       if (this.role(id, p) === "viewer")
         throw new AppError(403, "Viewer access does not allow editing.");
       const note = await this.vault.note(id);
+      const receiptKey = operation
+        ? `${id}:${p.session}:${operation}`
+        : undefined;
+      const fingerprint = cellHash(changes);
+      const prior = receiptKey ? this.receipts.get(receiptKey) : undefined;
+      if (prior) {
+        if (prior.fingerprint !== fingerprint)
+          throw new AppError(
+            409,
+            "This save identifier was already used for different changes.",
+          );
+        return structuredClone(prior.note);
+      }
+      const remember = (saved: Note) => {
+        if (receiptKey) {
+          const bytes = Buffer.byteLength(JSON.stringify(saved));
+          while (
+            this.receipts.size &&
+            (this.receipts.size >= 512 ||
+              this.receiptBytes + bytes > 16 * 1024 * 1024)
+          ) {
+            const oldest = this.receipts.keys().next().value!;
+            this.receiptBytes -= this.receipts.get(oldest)!.bytes;
+            this.receipts.delete(oldest);
+          }
+          if (bytes <= 16 * 1024 * 1024) {
+            this.receipts.set(receiptKey, {
+              fingerprint,
+              note: structuredClone(saved),
+              bytes,
+            });
+            this.receiptBytes += bytes;
+          }
+        }
+        return saved;
+      };
+      if (
+        operation &&
+        changes.every(
+          (change) =>
+            cellHash(cellValue(note, change.cell)) === cellHash(change.value),
+        )
+      )
+        return remember(note);
       let next: Note = structuredClone(note);
       const active = this.active(id);
       for (const change of changes) {
@@ -361,6 +441,7 @@ export class Collaboration {
             items: next.canvas?.items || [],
             width: size?.width,
             height: size?.height,
+            prose: size?.prose,
           };
         } else (next as any)[change.cell] = change.value;
       }
@@ -373,7 +454,7 @@ export class Collaboration {
         by: p.session,
         presence: this.active(id),
       });
-      return saved;
+      return remember(saved);
     });
   }
   subscribe(id: string, p: Principal, listener: (event: unknown) => void) {

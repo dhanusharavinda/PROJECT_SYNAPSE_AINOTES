@@ -1,6 +1,13 @@
 import DiagramComposer from "./DiagramComposer";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Users, Save, Download } from "lucide-react";
+import {
+  ArrowLeft,
+  Users,
+  Save,
+  Download,
+  Plus,
+  MoreHorizontal,
+} from "lucide-react";
 import { api, setSharedMediaScope } from "./api";
 import type { Note, NoteCanvas } from "./types";
 import type { EditorHandle } from "./Editor";
@@ -22,6 +29,7 @@ type Peer = {
 };
 type Snapshot = {
   session?: string;
+  lineage?: { id: string; title: string }[];
   note: Note;
   role: string;
   cells: Record<string, { value: unknown; hash: string }>;
@@ -31,7 +39,11 @@ const equal = (a: unknown, b: unknown) =>
   JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 function value(n: Note, cell: string): unknown {
   if (cell === "canvasSize")
-    return { width: n.canvas?.width || 1100, height: n.canvas?.height || 500 };
+    return {
+      width: n.canvas?.width || 1100,
+      height: n.canvas?.height || 500,
+      ...(n.canvas?.prose ? { prose: n.canvas.prose } : {}),
+    };
   if (cell.startsWith("item/"))
     return n.canvas?.items.find((i) => i.id === cell.slice(5)) || null;
   return (n as any)[cell] ?? null;
@@ -81,6 +93,18 @@ export default function SharedNotebook({
     [target, setTarget] = useState("");
   const [slidesOpen, setSlidesOpen] = useState(false);
   const [diagramSelection, setDiagramSelection] = useState<string | null>(null);
+  const [creatingPage, setCreatingPage] = useState(false),
+    [pageTitle, setPageTitle] = useState(""),
+    [pageBusy, setPageBusy] = useState(false),
+    [pageError, setPageError] = useState("");
+  const pageOperation = useRef("");
+  function newPage() {
+    if (snapshot?.role === "viewer") return;
+    pageOperation.current = crypto.randomUUID();
+    setPageTitle("");
+    setPageError("");
+    setCreatingPage(true);
+  }
   const current = useRef<Note | undefined>(undefined),
     baseline = useRef<Snapshot | undefined>(undefined),
     pending = useRef(new Map<string, { base?: string; value: unknown }>()),
@@ -93,11 +117,33 @@ export default function SharedNotebook({
   const rootPath = connection
     ? "/collaboration/remote/" + connection
     : "/collaboration/local/" + id;
-  const call = (action: string, body: unknown = {}) =>
-    api(rootPath + "/" + action, body);
+  const call = (action: string, body: unknown = {}, signal?: AbortSignal) =>
+    signal
+      ? api(rootPath + "/" + action, body, undefined, signal)
+      : api(rootPath + "/" + action, body);
+  const retryCount = useRef(0);
+  const uncertain = useRef<
+    | {
+        batch: [string, { base?: string; value: unknown }][];
+        changes: { cell: string; base: string; value: unknown }[];
+        operation: string;
+      }
+    | undefined
+  >(undefined);
+  const hashValue = async (v: unknown) =>
+    Array.from(
+      new Uint8Array(
+        await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(JSON.stringify(v ?? null)),
+        ),
+      ),
+      (x) => x.toString(16).padStart(2, "0"),
+    ).join("");
   const actor = connection ? undefined : "owner";
   // The server chooses the actual remote actor session. Identify it from our acquired cell response, never from email alone.
   const [membersOpen, setMembersOpen] = useState(false);
+  const [reviewError, setReviewError] = useState(false);
   const [recoveredDraft, setRecoveredDraft] = useState<Note>();
   const draftKey = "synapse-shared-draft:" + id;
   const bodyEditor = useRef<EditorHandle>(null);
@@ -114,6 +160,15 @@ export default function SharedNotebook({
     (p) => p.session !== ownSession.current,
   );
   function adopt(fresh: Snapshot) {
+    if (
+      baseline.current &&
+      fresh.note.revision < baseline.current.note.revision
+    )
+      fresh = {
+        ...fresh,
+        note: baseline.current.note,
+        cells: baseline.current.cells,
+      };
     if (fresh.session) ownSession.current = fresh.session;
     const first = !baseline.current;
     baseline.current = fresh;
@@ -139,35 +194,57 @@ export default function SharedNotebook({
   async function flush() {
     if (inflight.current) return inflight.current;
     const run = (async () => {
-      while (pending.current.size) {
-        const batch = [...pending.current.entries()].slice(0, 200);
-        for (const [k] of batch) pending.current.delete(k);
+      while (pending.current.size || uncertain.current) {
+        const resending = uncertain.current;
+        const batch =
+          resending?.batch || [...pending.current.entries()].slice(0, 200);
+        if (!resending) for (const [k] of batch) pending.current.delete(k);
         try {
-          const changes = [];
-          for (const [k, p] of batch) {
-            const acquired = await call("acquire", { cell: k });
-            if (acquired.session) ownSession.current = acquired.session;
-            const expected =
-              p.base ||
-              (await crypto.subtle
-                .digest("SHA-256", new TextEncoder().encode("null"))
-                .then((b) =>
-                  Array.from(new Uint8Array(b), (x) =>
-                    x.toString(16).padStart(2, "0"),
-                  ).join(""),
-                ));
-            if (acquired.hash !== expected && !equal(acquired.value, p.value))
-              throw Error(
-                "This part changed while you were editing. Your draft is kept below. Reload or copy your draft before continuing.",
-              );
-            changes.push({ cell: k, base: acquired.hash, value: p.value });
+          const changes = resending?.changes || [];
+          if (!resending)
+            for (const [k, p] of batch) {
+              const acquired = await call("acquire", { cell: k });
+              if (acquired.session) ownSession.current = acquired.session;
+              const expected =
+                p.base ||
+                (await crypto.subtle
+                  .digest("SHA-256", new TextEncoder().encode("null"))
+                  .then((b) =>
+                    Array.from(new Uint8Array(b), (x) =>
+                      x.toString(16).padStart(2, "0"),
+                    ).join(""),
+                  ));
+              if (acquired.hash !== expected && !equal(acquired.value, p.value))
+                throw Object.assign(
+                  new Error(
+                    "This part changed while you were editing. Your draft is kept below. Reload or copy your draft before continuing.",
+                  ),
+                  { status: 409 },
+                );
+              changes.push({ cell: k, base: acquired.hash, value: p.value });
+            }
+          const operation = resending?.operation || crypto.randomUUID();
+          uncertain.current = { batch, changes, operation };
+          let saved: Note;
+          try {
+            saved = await call("change", { changes, operation });
+          } catch (e) {
+            if (!resending || (e as any).status !== 423) throw e;
+            for (const [k] of batch) await call("acquire", { cell: k });
+            saved = await call("change", { changes, operation });
           }
-          await call("change", { changes });
           const fresh: Snapshot = await call("snapshot");
           for (const [k] of batch) {
             const p = pending.current.get(k);
-            if (p) p.base = fresh.cells[k]?.hash;
+            if (
+              p &&
+              resending &&
+              equal(p.value, batch.find(([key]) => key === k)![1].value)
+            )
+              pending.current.delete(k);
+            else if (p) p.base = await hashValue(value(saved, k));
           }
+          uncertain.current = undefined;
           adopt(fresh);
           for (const [k] of batch)
             if (k !== cell.current)
@@ -176,16 +253,22 @@ export default function SharedNotebook({
           for (const [k, p] of batch)
             if (!pending.current.has(k)) pending.current.set(k, p);
           if (alive.current) {
-            if ((e as any).status === 423) {
+            const status = (e as any).status;
+            if (!status || status >= 500 || [408, 423, 429].includes(status)) {
               setError("");
               setStatus(
-                "Waiting for the other editor. Your draft is saved here.",
+                status === 423
+                  ? "Waiting for the other editor. Your draft is saved here."
+                  : "Reconnecting. Your draft is saved here.",
               );
               if (!timer.current)
-                timer.current = setTimeout(() => {
-                  timer.current = undefined;
-                  void flush().catch(() => {});
-                }, 1000);
+                timer.current = setTimeout(
+                  () => {
+                    timer.current = undefined;
+                    void flush().catch(() => {});
+                  },
+                  Math.min(8000, 1000 * 2 ** retryCount.current++),
+                );
             } else {
               setError((e as Error).message);
               setStatus("Draft kept on this device");
@@ -195,6 +278,7 @@ export default function SharedNotebook({
         }
       }
       if (alive.current) {
+        retryCount.current = 0;
         setError("");
         setStatus("Saved to owner's notebook");
         onDirty?.(false);
@@ -280,15 +364,39 @@ export default function SharedNotebook({
     let liveFailed = false;
     const watch = async () => {
       try {
-        const result = await call("watch", { cursor });
+        const result = await call(
+          "watch",
+          { cursor, revision: baseline.current?.note.revision },
+          AbortSignal.timeout(30000),
+        );
         if (stopped) return;
+        if (result?.presence && !result.snapshot && baseline.current) {
+          if (liveFailed) {
+            setStatus(pending.current.size ? "Saving…" : "Live");
+            liveFailed = false;
+          }
+          cursor = result.cursor;
+          if (result.session) ownSession.current = result.session;
+          baseline.current = {
+            ...baseline.current,
+            presence: result.presence,
+            role: result.role,
+            lineage: result.lineage,
+          };
+          setSnapshot(baseline.current);
+          void watch();
+          return;
+        }
         if (!result?.snapshot)
-          throw new Error(
-            "Update Synapse on both computers to enable live editing.",
+          throw Object.assign(
+            new Error(
+              "Update Synapse on both computers to enable live editing.",
+            ),
+            { status: 426 },
           );
         cursor = result.cursor;
         if (liveFailed) {
-          setError("");
+          setStatus(pending.current.size ? "Saving…" : "Live");
           liveFailed = false;
         }
         if (inflight.current) {
@@ -300,7 +408,9 @@ export default function SharedNotebook({
       } catch (e) {
         if (stopped) return;
         liveFailed = true;
-        setError((e as Error).message);
+        if ([401, 403, 404, 426].includes((e as any).status))
+          setError((e as Error).message);
+        else setStatus("Reconnecting. Your draft is saved here.");
         retry = setTimeout(() => void watch(), 1500);
       }
     };
@@ -373,6 +483,7 @@ export default function SharedNotebook({
   }
   function command(cmd: string) {
     if (cmd.startsWith("note:")) onOpenNote?.(cmd.slice(5));
+    else if (cmd === "page" || cmd === "concept") newPage();
     else if (cmd === "link") {
       void api<any[]>("/account/pages")
         .then(setLinkedPages)
@@ -392,10 +503,7 @@ export default function SharedNotebook({
     } else if (cmd === "image" || cmd === "file")
       document.getElementById("shared-upload")?.click();
     else if (cmd === "draw") sheet.current?.tool("pen");
-    else
-      notify(
-        "Use the canvas tools here. AI actions and page creation are available from your own notebook.",
-      );
+    else notify("This action is not available on the shared page yet.");
   }
   async function upload(file: File) {
     try {
@@ -458,9 +566,9 @@ export default function SharedNotebook({
         if (object) void focusCell("item/" + object.dataset.objectId);
       }}
     >
-      {parents.length > 0 && (
+      {(snapshot?.lineage || parents).length > 0 && (
         <nav className="breadcrumbs" aria-label="Page lineage">
-          {parents.map((p) => (
+          {(snapshot?.lineage || parents).map((p) => (
             <button key={p.id} onClick={() => onOpenNote?.(p.id)}>
               {p.title}
             </button>
@@ -474,34 +582,124 @@ export default function SharedNotebook({
           Back
         </button>
         <span role="status">
-          {status} / {snapshot?.role}
+          <span className="sync-dot" aria-hidden="true" />
+          {status.startsWith("Saved")
+            ? "Saved"
+            : status === "Connected"
+              ? "Live"
+              : status.startsWith("Waiting")
+                ? "Waiting to sync"
+                : status === "Saving..."
+                  ? "Saving…"
+                  : status}
         </span>
-        <button disabled={viewer} onClick={() => void flush().catch(() => {})}>
-          <Save size={14} />
-          Save
-        </button>
-        {!connection && (
-          <button
-            onClick={() =>
-              void flush()
-                .then(() => setMembersOpen(true))
-                .catch(() => {})
-            }
-          >
-            Share
+        {!viewer && (
+          <button className="shared-new-page" onClick={newPage}>
+            <Plus size={14} />
+            New page
           </button>
         )}
-        <button
-          onClick={() =>
-            void flush()
-              .then(() => setSlidesOpen(true))
-              .catch(() => {})
-          }
-        >
-          Slides
-        </button>
-        {onNew && <button onClick={onNew}>Subpage</button>}
+        <details className="shared-more">
+          <summary aria-label="More page actions">
+            <MoreHorizontal size={18} />
+          </summary>
+          <div>
+            <button
+              disabled={viewer}
+              onClick={() => void flush().catch(() => {})}
+            >
+              <Save size={14} />
+              Save
+            </button>
+            {!connection && (
+              <button
+                onClick={() =>
+                  void flush()
+                    .then(() => setMembersOpen(true))
+                    .catch(() => {})
+                }
+              >
+                Share
+              </button>
+            )}
+            <button
+              onClick={() =>
+                void flush()
+                  .then(() => setSlidesOpen(true))
+                  .catch(() => {})
+              }
+            >
+              Slides
+            </button>
+          </div>
+        </details>
       </header>
+      {creatingPage && (
+        <Modal
+          title="New subpage"
+          onClose={() => {
+            if (!pageBusy) setCreatingPage(false);
+          }}
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setPageBusy(true);
+              setPageError("");
+              try {
+                await flush();
+                const child = await call("create-page", {
+                  title: pageTitle,
+                  operation: pageOperation.current,
+                });
+                const editor = sheet.current?.editor() || bodyEditor.current;
+                if (editor) editor.linkTo(child.id, child.title);
+                else
+                  stage({
+                    ...current.current!,
+                    body:
+                      (current.current!.body || "") +
+                      `\n\n[${child.title.replace(/[\[\]\\]/g, "")}](${child.id}.md)`,
+                  });
+                await flush();
+                setCreatingPage(false);
+                onOpenNote?.(child.id);
+              } catch (e) {
+                setPageError((e as Error).message);
+              } finally {
+                setPageBusy(false);
+              }
+            }}
+          >
+            <label>
+              Page name
+              <input
+                autoFocus
+                required
+                maxLength={160}
+                value={pageTitle}
+                onChange={(e) => setPageTitle(e.target.value)}
+              />
+            </label>
+            {pageError && <p role="alert">{pageError}</p>}
+            <footer className="dialog-actions">
+              <button
+                type="button"
+                disabled={pageBusy}
+                onClick={() => setCreatingPage(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary"
+                disabled={pageBusy || !pageTitle.trim()}
+              >
+                {pageBusy ? "Creating…" : "Create page"}
+              </button>
+            </footer>
+          </form>
+        </Modal>
+      )}
       {diagramSelection !== null && !viewer && (
         <DiagramComposer
           note={note}
@@ -527,18 +725,21 @@ export default function SharedNotebook({
       {slidesOpen && (
         <SlidesExport notes={[note]} onClose={() => setSlidesOpen(false)} />
       )}
-      <div className="live-people" aria-label="People editing">
-        <Users size={14} />
-        {others.length ? (
-          others.map((p) => (
-            <span key={p.session + p.cell} style={{ borderColor: p.color }}>
-              {p.name} / {p.cell.startsWith("item/") ? "canvas object" : p.cell}
-            </span>
-          ))
-        ) : (
-          <span>You're the only person editing</span>
-        )}
-      </div>
+      {others.length > 0 && (
+        <div className="live-people" aria-label="People editing">
+          <Users size={14} />
+          {others.length ? (
+            others.map((p) => (
+              <span key={p.session + p.cell} style={{ borderColor: p.color }}>
+                {p.name} /{" "}
+                {p.cell.startsWith("item/") ? "canvas object" : p.cell}
+              </span>
+            ))
+          ) : (
+            <span>You're the only person editing</span>
+          )}
+        </div>
+      )}
       {recoveredDraft && (
         <div className="error-banner" role="status">
           <p>A local draft was kept from your previous session.</p>
@@ -562,6 +763,12 @@ export default function SharedNotebook({
       )}
       {error && (
         <div className="error-banner" role="alert">
+          <p>{error}</p>
+          <button onClick={() => setReviewError(true)}>Review draft</button>
+        </div>
+      )}
+      {error && reviewError && (
+        <Modal title="Your saved draft" onClose={() => setReviewError(false)}>
           <p>{error}</p>
           <button onClick={() => void flush().catch(() => {})}>
             Retry saving
@@ -587,6 +794,7 @@ export default function SharedNotebook({
           <button
             onClick={async () => {
               pending.current.clear();
+              uncertain.current = undefined;
               localStorage.removeItem(draftKey);
               adopt(await call("snapshot"));
               setError("");
@@ -595,7 +803,7 @@ export default function SharedNotebook({
           >
             Reload saved version
           </button>
-        </div>
+        </Modal>
       )}
       <input
         className="note-title"
@@ -686,6 +894,7 @@ export default function SharedNotebook({
         >
           <div data-cell="body">
             <RichEditor
+              ref={bodyEditor}
               value={bodyOf(note)}
               readOnly={locked("body")}
               onReady={(e) => {

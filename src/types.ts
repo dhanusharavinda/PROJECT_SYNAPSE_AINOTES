@@ -36,6 +36,7 @@ export interface CanvasItem {
   uncertain?: boolean;
 }
 export interface NoteCanvas {
+  prose?: { width: number; height: number };
   items: CanvasItem[];
   height: number;
   width?: number;
@@ -94,11 +95,18 @@ export interface Proposal {
   layers?: Record<Layer, string>;
   diagram?: {
     title?: string;
-    type?: "flowchart" | "hierarchy" | "concept-map" | "architecture" | "data-flow" | "state-machine";
+    type?:
+      | "flowchart"
+      | "hierarchy"
+      | "concept-map"
+      | "architecture"
+      | "data-flow"
+      | "state-machine";
     nodes: {
       id: string;
       label: string;
-      kind?: "step" | "decision" | "terminal" | "concept" | "component" | "store";
+      kind?:
+        "step" | "decision" | "terminal" | "concept" | "component" | "store";
     }[];
     edges: { from: string; to: string; label: string }[];
   };

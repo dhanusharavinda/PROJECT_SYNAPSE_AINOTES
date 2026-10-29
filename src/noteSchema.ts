@@ -52,6 +52,12 @@ export const noteSchema = z.object({
   canvas: z
     .object({
       height: z.number().finite().min(0).max(100000),
+      prose: z
+        .object({
+          width: z.number().finite().min(80).max(100000),
+          height: z.number().finite().min(32).max(100000),
+        })
+        .optional(),
       width: z.number().finite().min(100).max(100000).optional(),
       items: z
         .array(

@@ -20,6 +20,22 @@ const stroke: CanvasItem = {
     [104, 4],
   ],
 };
+it("resizes a long text box in both directions without increasing its font size", () => {
+  const item = {
+    ...stroke,
+    kind: "text" as const,
+    width: 400,
+    height: 200,
+    text: "Long explanation ".repeat(50),
+    textScale: 1,
+  };
+  expect(resizeItem(item, 250, -120)).toMatchObject({
+    width: 650,
+    height: 80,
+    textScale: 1,
+    fitted: true,
+  });
+});
 it("erases a rotated highlighter where it is displayed and retains its opacity", () => {
   const rotated = { ...stroke, rotation: 90, opacity: 0.32 };
   const parts = eraseStrokes([rotated], [154, 204], [154, 204], 5);

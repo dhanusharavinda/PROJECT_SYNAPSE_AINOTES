@@ -34,6 +34,21 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
+it("acknowledges a repeated save once without replacing a newer collaborator edit", async () => {
+  const operation = crypto.randomUUID(),
+    lease = await service.acquire(id, a, "body");
+  const changes = [{ cell: "body", base: lease.hash, value: "First edit" }];
+  const saved = await service.change(id, a, changes, operation);
+  service.release(id, a);
+  const other = await service.acquire(id, b, "body");
+  await service.change(id, b, [
+    { cell: "body", base: other.hash, value: "Newer remote edit" },
+  ]);
+  expect((await service.change(id, a, changes, operation)).revision).toBe(
+    saved.revision,
+  );
+  expect((await vault.note(id)).body).toBe("Newer remote edit");
+});
 it("keeps inherited parent access when a child also has its own separate collaborator list", async () => {
   const child = await vault.write({ ...newTabletNote(), parentId: id });
   await service.invite(child.id, owner, "different@example.test", "viewer");
@@ -44,12 +59,12 @@ it("pushes changes immediately to a waiting second session and includes live pre
   const pending = service.watch(id, b, first.cursor);
   const acquired = await service.acquire(id, a, "body");
   const presence = await pending;
-  expect(presence.snapshot.presence.some((p) => p.session === "a")).toBe(true);
+  expect(presence.snapshot!.presence.some((p) => p.session === "a")).toBe(true);
   const next = service.watch(id, b, presence.cursor);
   await service.change(id, a, [
     { cell: "body", base: acquired.hash, value: "Live edit" },
   ]);
-  expect((await next).snapshot.note.body).toBe("Live edit");
+  expect((await next).snapshot!.note.body).toBe("Live edit");
 });
 it("inherits parent access for children and grandchildren, and revokes it without granting unrelated pages", async () => {
   const child = await vault.write({ ...newTabletNote(), parentId: id });
