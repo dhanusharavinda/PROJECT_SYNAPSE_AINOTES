@@ -1,3 +1,4 @@
+import GroupPicker from "./GroupPicker";
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import {
   BookOpen,
@@ -879,16 +880,7 @@ export default function App() {
           </label>
           <label>
             Topic group
-            <input
-              value={newGroup}
-              list="new-note-groups"
-              onChange={(e) => setNewGroup(e.target.value)}
-            />
-            <datalist id="new-note-groups">
-              {[...new Set(data.notes.map((n) => n.group))].sort().map((g) => (
-                <option key={g} value={g} />
-              ))}
-            </datalist>
+            <GroupPicker value={newGroup} groups={data.notes.map(n => n.group)} onChange={setNewGroup} />
           </label>
           <label>
             Date (optional)
@@ -910,7 +902,7 @@ export default function App() {
                     theme,
                   title: newTitle,
                   context: newContext,
-                  group: newGroup,
+                  group: newGroup.trim() || "Unsorted",
                   body: "",
                   noteDate: newDate || undefined,
                   parentId: creationParent,

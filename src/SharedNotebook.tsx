@@ -1,3 +1,4 @@
+import GroupPicker from "./GroupPicker";
 import DiagramComposer from "./DiagramComposer";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -987,28 +988,7 @@ export default function SharedNotebook({
           </label>
           <label>
             Group
-            <input
-              data-cell="group"
-              readOnly={viewer || locked("group")}
-              value={note.group}
-              onChange={(e) => edit("group", e.target.value)}
-            />
-            {!viewer && (
-              <select
-                aria-label="Choose existing group"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) edit("group", e.target.value);
-                }}
-              >
-                <option value="">Choose existing group</option>
-                {groups.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-            )}
+            <GroupPicker value={note.group} groups={groups} cell="group" disabled={viewer || locked("group")} onChange={group => edit("group", group)} />
           </label>
           <label>
             Topic

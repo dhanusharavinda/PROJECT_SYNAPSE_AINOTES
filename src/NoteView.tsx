@@ -1,3 +1,4 @@
+import GroupPicker from "./GroupPicker";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   ArrowLeft,
@@ -683,33 +684,7 @@ export default function NoteView({
               </label>
               <label>
                 Group{" "}
-                <input
-                  aria-label="Topic group"
-                  value={draft.group}
-                  list="topic-groups"
-                  onChange={(e) => edit({ group: e.target.value })}
-                />
-                <datalist id="topic-groups">
-                  {[...new Set(data.notes.map((n) => n.group))].map((g) => (
-                    <option key={g}>{g}</option>
-                  ))}
-                </datalist>
-                <select
-                  aria-label="Choose existing group"
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) edit({ group: e.target.value });
-                  }}
-                >
-                  <option value="">Choose existing group</option>
-                  {[...new Set(data.notes.map((n) => n.group))]
-                    .sort()
-                    .map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                </select>
+                <GroupPicker value={draft.group} groups={data.notes.map(n => n.group)} onChange={group => edit({ group })} />
               </label>
             </div>
             <div className="parent-picker">
