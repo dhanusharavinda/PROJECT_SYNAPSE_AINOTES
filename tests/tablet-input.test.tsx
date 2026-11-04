@@ -13,12 +13,19 @@ import type { CanvasItem } from "../src/types";
 vi.mock("../src/RichEditor", () => ({
   default: React.forwardRef((props: any, ref) => {
     React.useImperativeHandle(ref, () => ({
+      capture: () => {},
       getEditor: () => ({ commands: { focus: () => {} } }),
     }));
     return React.createElement("textarea", {
       "aria-label": "Placed text",
       value: props.value || "",
       onChange: (e: any) => props.onChange(e.target.value),
+      onKeyDown: (e: any) => {
+        if (e.key === "F9") {
+          props.onChange("");
+          props.onCommand?.("page");
+        }
+      },
     });
   }),
 }));
@@ -865,6 +872,56 @@ it("ignores finger ink by default and keeps pen dots undoable", () => {
     clientX: 100,
     clientY: 100,
   });
+  expect(changed.mock.calls.at(-1)![0].items).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(changed.mock.calls.at(-1)![0].items).toHaveLength(0);
+});
+
+it("keeps async subpage insertion at the erased slash box and supports undo", () => {
+  const ref = React.createRef<SheetHandle>(),
+    changed = vi.fn();
+  let insert: ((id: string, title: string) => void) | undefined;
+  render(
+    <NotebookSheet
+      ref={ref}
+      value={{
+        width: 1100,
+        height: 800,
+        items: [
+          {
+            id: "slash-box",
+            kind: "text",
+            x: 310,
+            y: 420,
+            width: 320,
+            height: 90,
+            text: "/page",
+          },
+        ],
+      }}
+      onChange={changed}
+      onImage={() => {}}
+      onDrawing={() => {}}
+      onCommand={() => {
+        insert = ref.current?.captureLink?.();
+      }}
+    >
+      <div />
+    </NotebookSheet>,
+  );
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Placed text" }), {
+    key: "F9",
+  });
+  expect(insert).toBeTypeOf("function");
+  act(() => insert!("child-id", "New subpage"));
+  const result = changed.mock.calls.at(-1)![0];
+  expect(result.items).toHaveLength(1);
+  expect(result.items[0]).toMatchObject({
+    x: 310,
+    y: 420,
+    text: "[New subpage](child-id.md)",
+  });
+  act(() => insert!("child-id", "New subpage"));
   expect(changed.mock.calls.at(-1)![0].items).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
   expect(changed.mock.calls.at(-1)![0].items).toHaveLength(0);

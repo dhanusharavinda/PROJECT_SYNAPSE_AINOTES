@@ -145,8 +145,12 @@ export default function SharedNotebook({
     [pageBusy, setPageBusy] = useState(false),
     [pageError, setPageError] = useState("");
   const pageOperation = useRef("");
+  const pageInsertion = useRef<((id: string, title: string) => void) | undefined>(undefined);
   function newPage() {
     if (snapshot?.role === "viewer") return;
+    const source = sheet.current?.editor() || bodyEditor.current;
+    source?.capture();
+    pageInsertion.current = sheet.current?.captureLink?.() || (source ? (id, title) => source.linkTo(id, title, true) : undefined);
     pageOperation.current = crypto.randomUUID();
     setPageTitle("");
     setPageError("");
@@ -790,8 +794,7 @@ export default function SharedNotebook({
                   title: pageTitle,
                   operation: pageOperation.current,
                 });
-                const editor = sheet.current?.editor() || bodyEditor.current;
-                if (editor) editor.linkTo(child.id, child.title);
+                if (pageInsertion.current) pageInsertion.current(child.id, child.title);
                 else
                   stage({
                     ...current.current!,
@@ -801,7 +804,8 @@ export default function SharedNotebook({
                   });
                 await flush();
                 setCreatingPage(false);
-                onOpenNote?.(child.id);
+                pageInsertion.current = undefined;
+                notify("Page created and linked here.");
               } catch (e) {
                 setPageError((e as Error).message);
               } finally {

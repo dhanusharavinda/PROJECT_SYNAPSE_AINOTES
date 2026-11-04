@@ -49,8 +49,11 @@ const reducedMotion = () =>
   typeof matchMedia === "function" &&
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 function savedPage(id: string) {
-  try { return sessionStorage.getItem("synapse-sheet:" + id) || id; }
-  catch { return id; }
+  try {
+    return sessionStorage.getItem("synapse-sheet:" + id) || id;
+  } catch {
+    return id;
+  }
 }
 
 export default forwardRef<SheetHandle, Props>(function PagedNotebook(
@@ -172,7 +175,9 @@ export default forwardRef<SheetHandle, Props>(function PagedNotebook(
     };
   }, [page.id, page.body, page.canvas, page.paperTexture]);
   useEffect(() => {
-    try { sessionStorage.setItem("synapse-sheet:" + note.id, page.id); } catch {}
+    try {
+      sessionStorage.setItem("synapse-sheet:" + note.id, page.id);
+    } catch {}
     inner.current?.tool(retainedTool.current);
     const scroller = root.current?.querySelector<HTMLElement>(".sheet-scroll");
     if (!scroller) return;
@@ -206,6 +211,7 @@ export default forwardRef<SheetHandle, Props>(function PagedNotebook(
       drawing: (id) => inner.current?.drawing(id),
       video: (url, label) => inner.current?.video(url, label),
       editor: () => inner.current?.editor() || null,
+      captureLink: () => inner.current?.captureLink?.(),
       block: (kind, md) => inner.current?.block(kind, md),
       flush: () => inner.current?.flush(),
       currentTool: () => inner.current?.currentTool() || retainedTool.current,

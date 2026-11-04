@@ -74,7 +74,7 @@ export interface EditorHandle {
   unlinkTo: (id: string) => void;
   capture: () => void;
   selectedText: () => string;
-  linkTo: (id: string, title: string) => void;
+  linkTo: (id: string, title: string, atCursor?: boolean) => void;
   insertImage: (src: string, alt: string) => void;
   insertFile: (src: string, label: string) => void;
   insertDrawing: (id: string) => void;
@@ -764,11 +764,11 @@ const Editor = forwardRef<
               " ",
             )
           : "",
-      linkTo: (id, title) => {
+      linkTo: (id, title, atCursor = false) => {
         if (!editor) return;
         restore();
         let { from, to } = editor.state.selection;
-        if (from === to) {
+        if (from === to && !atCursor) {
           editor.state.doc.descendants((node, pos) => {
             if (to !== from || !node.isText) return;
             const at = (node.text || "")

@@ -93,6 +93,7 @@ export interface SheetHandle {
   drawing: (id: string) => void;
   video: (url: string, label: string) => void;
   editor: () => EditorHandle | null;
+  captureLink?: () => ((id: string, title: string) => void) | undefined;
   block: (kind: "table" | "text", markdown: string) => void;
 }
 type Gesture = {
@@ -224,6 +225,7 @@ export default forwardRef<
     x: number;
     y: number;
   }>();
+  const commandObject = useRef<CanvasItem | undefined>(undefined);
   const editors = useRef(new Map<string, EditorHandle>()),
     pref = usePreferences(),
     active = useRef(false),
@@ -1020,6 +1022,47 @@ export default forwardRef<
       add({ kind: "drawing", drawingId, ...place(), width: 280, height: 210 }),
     video: (src, text) =>
       add({ kind: "video", src, text, ...place(), width: 280, height: 210 }),
+    captureLink: () => {
+      const item =
+        commandObject.current ||
+        (selected.length === 1
+          ? latest.current.items.find((i) => i.id === selected[0])
+          : undefined);
+      commandObject.current = undefined;
+      const source = item ? editors.current.get(item.id) : undefined;
+      source?.capture();
+      if (!item && !menu) return undefined;
+      const point = item
+        ? { x: item.x, y: item.y }
+        : (() => {
+            const [x, y] = at({ clientX: menu!.x, clientY: menu!.y });
+            return { x, y };
+          })();
+      let inserted = false;
+      return (id, title) => {
+        if (inserted) return;
+        inserted = true;
+        const live =
+          item && latest.current.items.some((i) => i.id === item.id)
+            ? editors.current.get(item.id)
+            : undefined;
+        if (live && !live.getEditor()?.isDestroyed) {
+          live.linkTo(id, title, true);
+          return;
+        }
+        setTextDraft(undefined);
+        textDraftRef.current = undefined;
+        const label = title.replace(/[\\[\]]/g, (c) => "\\" + c);
+        add({
+          kind: "text",
+          text: `[${label}](${id}.md)`,
+          ...point,
+          width: item?.width || 320,
+          height: item?.height || 70,
+        });
+        focus();
+      };
+    },
     editor: () =>
       selected.length === 1 ? editors.current.get(selected[0]) || null : null,
     block: (kind, text) =>
@@ -2469,7 +2512,11 @@ export default forwardRef<
                       readOnly={!!peer}
                       value={i.text || ""}
                       onChange={(text) => update(i.id, { text })}
-                      onCommand={onCommand || (() => {})}
+                      onCommand={(cmd) => {
+                        commandObject.current =
+                          cmd === "page" || cmd === "concept" ? i : undefined;
+                        onCommand?.(cmd);
+                      }}
                       supportedCommands={onCommand ? supportedCommands : []}
                       onUpload={onUpload}
                       onVideo={(src, text) =>

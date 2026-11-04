@@ -90,7 +90,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-it("creates a page from the shared slash-command handler and opens it in the app", async () => {
+it("creates a page from the shared slash-command handler and stays on the parent for undo", async () => {
   const original = mock.call.getMockImplementation()!,
     id = crypto.randomUUID(),
     open = vi.fn();
@@ -116,7 +116,8 @@ it("creates a page from the shared slash-command handler and opens it in the app
     target: { value: "Child" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Create page" }));
-  await waitFor(() => expect(open).toHaveBeenCalledWith(id));
+  await waitFor(() => expect(screen.queryByText("New subpage")).toBeNull());
+  expect(open).not.toHaveBeenCalled();
   expect(note.body).toContain(id + ".md");
   expect(
     mock.call.mock.calls.some(

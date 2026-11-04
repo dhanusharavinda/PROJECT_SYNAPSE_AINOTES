@@ -429,13 +429,16 @@ export default function NoteView({
     }
     activeEditor()?.capture();
     if (cmd === "link") setModal("link");
-    if (cmd === "page" || cmd === "concept")
+    if (cmd === "page" || cmd === "concept") {
+      const source = activeEditor();
+      const insert = sheetRef.current?.captureLink?.() || ((id: string, title: string) => source?.linkTo(id, title, true));
       await action("page", async () =>
         onNew(draft.id, async (n) => {
-          activeEditor()?.linkTo(n.id, n.title);
+          insert(n.id, n.title);
           await save();
         }),
       );
+    }
     if (cmd === "draw") sheetRef.current?.tool("pen");
     if (cmd === "flowchart") {
       setDiagramSelection(activeEditor()?.selectedText() || "");

@@ -908,13 +908,15 @@ export default function App() {
                   parentId: creationParent,
                 });
                 sessionStorage.setItem("synapse-new-note:" + n.id, "1");
-                if (createdCallback.current) await createdCallback.current(n);
+                const insertCreated = createdCallback.current;
+                if (insertCreated) await insertCreated(n);
                 await refresh();
                 setCreate(false);
                 setNewTitle("");
                 setNewDate("");
-                navigate("notes", n);
-                notify("Concept created as a local Markdown file.");
+                if (!insertCreated) navigate("notes", n);
+                createdCallback.current = undefined;
+                notify(insertCreated ? "Page created and linked here." : "Page created.");
               } catch (e) {
                 notify((e as Error).message);
               }
