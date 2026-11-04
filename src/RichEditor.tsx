@@ -20,6 +20,13 @@ import {
   Italic,
   Underline,
   Heading2,
+  Heading1,
+  Heading3,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  CodeXml,
   List,
   ListOrdered,
   ListTodo,
@@ -101,16 +108,16 @@ const NotebookImage = Image.extend({
   },
 });
 const commandInfo = [
-  ["align-left", "Align left", Type],
-  ["align-center", "Align centre", Type],
-  ["align-right", "Align right", Type],
-  ["align-justify", "Justify text", Type],
+  ["align-left", "Align left", AlignLeft],
+  ["align-center", "Align centre", AlignCenter],
+  ["align-right", "Align right", AlignRight],
+  ["align-justify", "Justify text", AlignJustify],
   ["undo", "Undo", Undo2],
   ["redo", "Redo", Redo2],
   ["text", "Normal text", Type],
-  ["h1", "Large heading", Heading2],
+  ["h1", "Large heading", Heading1],
   ["h2", "Heading", Heading2],
-  ["h3", "Small heading", Heading2],
+  ["h3", "Small heading", Heading3],
   ["bold", "Bold", Bold],
   ["italic", "Italic", Italic],
   ["underline", "Underline", Underline],
@@ -118,7 +125,7 @@ const commandInfo = [
   ["numbered", "Numbered list", ListOrdered],
   ["todo", "To-do list", ListTodo],
   ["code", "Code block", Code2],
-  ["inline-code", "Inline code", Code2],
+  ["inline-code", "Inline code", CodeXml],
   ["table", "Table", Table2],
   ["variant", "Another explanation", Layers],
   ["link", "Link a page", Link2],
@@ -138,6 +145,7 @@ const Editor = forwardRef<
     value: string;
     onChange: (s: string) => void;
     onCommand: (cmd: string) => void;
+    supportedCommands?: string[];
     onUpload?: (file: File) => void;
     onVideo?: (url: string, label: string) => void;
     readOnly?: boolean;
@@ -155,6 +163,7 @@ const Editor = forwardRef<
     value,
     onChange,
     onCommand,
+    supportedCommands,
     onUpload,
     onVideo,
     readOnly = false,
@@ -165,6 +174,22 @@ const Editor = forwardRef<
   },
   forwarded,
 ) {
+  const supportsCommand = (cmd: string) =>
+    !supportedCommands ||
+    ![
+      "link",
+      "page",
+      "concept",
+      "diagram",
+      "flowchart",
+      "image",
+      "file",
+      "draw",
+      "extract",
+    ].includes(cmd) ||
+    supportedCommands.includes(
+      cmd === "diagram" ? "flowchart" : cmd === "concept" ? "page" : cmd,
+    );
   const change = useRef(onChange);
   const preferences = usePreferences();
   const preferencesRef = useRef(preferences);
@@ -527,10 +552,8 @@ const Editor = forwardRef<
       setContext(undefined);
     };
     window.addEventListener("pointerdown", close);
-    window.addEventListener("scroll", close, true);
     return () => {
       window.removeEventListener("pointerdown", close);
-      window.removeEventListener("scroll", close, true);
     };
   }, [context]);
   function capture() {
@@ -648,7 +671,7 @@ const Editor = forwardRef<
     }, 0);
   }
   function run(cmd: string) {
-    if (!editor) return;
+    if (!editor || !supportsCommand(cmd)) return;
     setContext(undefined);
     setPalette(false);
     if (slash) {
@@ -1175,20 +1198,21 @@ const Editor = forwardRef<
           >
             {mediaTarget && (
               <div className="context-media-actions">
-                {mediaTarget.classList.contains("notebook-image") && (
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      const src = mediaTarget
-                        .querySelector("img")
-                        ?.getAttribute("src");
-                      if (src) commandCallback.current("extract:" + src);
-                      setContext(undefined);
-                    }}
-                  >
-                    Extract using AI
-                  </button>
-                )}
+                {mediaTarget.classList.contains("notebook-image") &&
+                  supportsCommand("extract") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        const src = mediaTarget
+                          .querySelector("img")
+                          ?.getAttribute("src");
+                        if (src) commandCallback.current("extract:" + src);
+                        setContext(undefined);
+                      }}
+                    >
+                      Extract using AI
+                    </button>
+                  )}
                 {[
                   ...mediaTarget.querySelectorAll<HTMLButtonElement>(
                     ".drawing-tools button,.media-controls button",
@@ -1197,13 +1221,23 @@ const Editor = forwardRef<
                   <button
                     role="menuitem"
                     key={index}
+                    disabled={button.disabled}
+                    aria-label={
+                      button.getAttribute("aria-label") ||
+                      button.title ||
+                      button.textContent ||
+                      "Media action"
+                    }
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       button.click();
                       setContext(undefined);
                     }}
                   >
-                    {button.textContent}
+                    {button.getAttribute("aria-label") ||
+                      button.title ||
+                      button.textContent ||
+                      "Media action"}
                   </button>
                 ))}
                 <button
@@ -1226,7 +1260,16 @@ const Editor = forwardRef<
                   onClick={() => {
                     restore();
                     if (label === "Paste") {
-                      void readClipboard().then(insertClipboardText);
+                      void readClipboard()
+                        .then(insertClipboardText)
+                        .catch(() => {
+                          window.dispatchEvent(
+                            new CustomEvent("synapse:notice", {
+                              detail:
+                                "Clipboard is unavailable. Focus the text and press Ctrl+V to paste.",
+                            }),
+                          );
+                        });
                     } else {
                       const selection = editor.state.selection;
                       void copyText(
@@ -1348,46 +1391,6 @@ const Editor = forwardRef<
                 Redo <small>Ctrl+Shift+Z</small>
               </button>
             </div>
-            <div className="context-clipboard">
-              <button
-                role="menuitem"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={async () => {
-                  await copyText(
-                    editor.state.doc.textBetween(
-                      editor.state.selection.from,
-                      editor.state.selection.to,
-                      "\n",
-                    ),
-                  );
-                  setContext(undefined);
-                }}
-              >
-                Copy <small>Ctrl+C</small>
-              </button>
-              <button
-                role="menuitem"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={async () => {
-                  try {
-                    const text = await navigator.clipboard.readText();
-                    restore();
-                    editor.commands.insertContentAt(
-                      editor.state.selection,
-                      editor.isActive("codeBlock")
-                        ? { type: "text", text }
-                        : text.replace(/</g, "&lt;"),
-                    );
-                    setContext(undefined);
-                  } catch {
-                    restore();
-                    setContext(undefined);
-                  }
-                }}
-              >
-                Paste <small>Ctrl+V</small>
-              </button>
-            </div>
             <div className="context-colors">
               <span>Text</span>
               {pastelNames.map((shade) => (
@@ -1480,6 +1483,7 @@ const Editor = forwardRef<
                 <button
                   key={cmd}
                   role="menuitem"
+                  disabled={!supportsCommand(cmd)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => run(cmd)}
                 >

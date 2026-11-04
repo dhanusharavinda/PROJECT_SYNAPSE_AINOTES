@@ -18,6 +18,12 @@ import "@fontsource/lora/400-italic.css";
 import "./styles.css";
 import "./notebook.css";
 import "./notebook-v3.css";
+import { restoreHandwritingFont } from "./handwritingFont";
+void restoreHandwritingFont();
+if (location.pathname.startsWith("/study")) {
+  document.querySelector('link[rel="manifest"]')?.remove();
+  document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.remove();
+}
 (window as any).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
 document.getElementById("root")?.setAttribute("spellcheck", "false");
 function Root() {
@@ -31,26 +37,36 @@ function Root() {
   return (
     <>
       {notebook && <Launch ready={ready} onDismiss={onDismiss} />}
-      <div style={{ display: "contents" }} ref={element => { if (element) element.inert = notebook && !launched; }} aria-hidden={notebook && !launched ? true : undefined}>
-      <React.Suspense fallback={<p role="status">Opening Synapse…</p>}>
-        <Ready onReady={onReady}>
-          {location.pathname.startsWith("/view/") ? (
-            <PublicView />
-          ) : location.pathname.startsWith("/signin") ? (
-            <SignIn />
-          ) : location.pathname.startsWith("/tablet") ? (
-            <TabletApp />
-          ) : (
-            <App />
-          )}
-        </Ready>
-      </React.Suspense>
+      <div
+        style={{ display: "contents" }}
+        ref={(element) => {
+          if (element) element.inert = notebook && !launched;
+        }}
+        aria-hidden={notebook && !launched ? true : undefined}
+      >
+        <React.Suspense fallback={<p role="status">Opening Synapse…</p>}>
+          <Ready onReady={onReady}>
+            {location.pathname.startsWith("/view/") ? (
+              <PublicView />
+            ) : location.pathname.startsWith("/signin") ? (
+              <SignIn />
+            ) : location.pathname.startsWith("/study") ? (
+              <TabletApp study />
+            ) : location.pathname.startsWith("/tablet") ? (
+              <TabletApp />
+            ) : (
+              <App />
+            )}
+          </Ready>
+        </React.Suspense>
       </div>
     </>
   );
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ShellBoundary><Root /></ShellBoundary>
+    <ShellBoundary>
+      <Root />
+    </ShellBoundary>
   </React.StrictMode>,
 );

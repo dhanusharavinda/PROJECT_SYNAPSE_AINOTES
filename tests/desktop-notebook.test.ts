@@ -76,6 +76,53 @@ it("persists video cards and speed-sensitive pen points without subject-specific
   const reopened = await app.vault.note(n.id);
   expect(reopened.canvas).toEqual(canvas);
 });
+it("saves and reopens all strokes when a handwritten sheet passes the old 1500-object ceiling", async () => {
+  const note = (
+    await owner("post", "/api/notes").send({
+      title: "Long handwriting",
+      body: "Keep every stroke",
+    })
+  ).body;
+  const items = Array.from({ length: 1800 }, (_, index) => ({
+    id: uid(),
+    kind: "pen",
+    x: index % 1000,
+    y: index,
+    width: 10,
+    height: 10,
+    points: [
+      [0, 0],
+      [10, 10],
+    ],
+    pressures: [1, 0.9],
+  }));
+  const response = await owner("put", "/api/notes/" + note.id)
+    .send({ ...note, canvas: { width: 1100, height: 2500, items } })
+    .expect(200);
+  expect(response.body.canvas.items).toHaveLength(1800);
+  expect((await new Vault(root).note(note.id)).canvas?.items).toEqual(items);
+});
+it("refuses a notebook beyond the transport budget without changing its saved Markdown", async () => {
+  const note = (
+    await owner("post", "/api/notes").send({
+      title: "Protected note",
+      body: "Original saved content",
+    })
+  ).body;
+  const file = app.vault.file("notes/" + note.fileName),
+    before = await fs.readFile(file, "utf8");
+  const pages = Array.from({ length: 43 }, () => ({
+    id: uid(),
+    body: "x".repeat(600000),
+    paperTexture: "plain",
+    canvas: { width: 1100, height: 900, items: [] },
+  }));
+  const result = await owner("put", "/api/notes/" + note.id)
+    .send({ ...note, pages })
+    .expect(413);
+  expect(result.body.error).toContain("too large to sync");
+  expect(await fs.readFile(file, "utf8")).toBe(before);
+});
 it("saves and clears a note date and preserves pixel geometry and additional shapes", async () => {
   const note = (
     await owner("post", "/api/notes").send({

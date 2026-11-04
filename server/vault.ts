@@ -5,6 +5,7 @@ import matter from "gray-matter";
 import { z } from "zod";
 import type { Note, State, Layer } from "../src/types.js";
 import { inlineTargets } from "../src/content.js";
+import { assertNoteFits } from "../src/notebookCapacity.js";
 
 export class AppError extends Error {
   constructor(
@@ -236,6 +237,22 @@ export class Vault {
     n = JSON.parse(JSON.stringify(n));
     const all = await this.notes(true);
     const old = all.find((x) => x.id === n.id);
+    // Preserve additional sheets when an older client edits the original page.
+    if (old?.pages && n.pages === undefined) n = { ...n, pages: old.pages };
+    if (old?.aiNotes && n.aiNotes === undefined)
+      n = { ...n, aiNotes: old.aiNotes };
+    if (old?.paperTexture && n.paperTexture === undefined)
+      n = { ...n, paperTexture: old.paperTexture };
+    try {
+      assertNoteFits(n);
+    } catch (error) {
+      throw new AppError(413, (error as Error).message);
+    }
+    if (n.pages?.some((p) => p.id === n.id))
+      throw new AppError(
+        400,
+        "The first sheet identity is reserved for this note.",
+      );
     if (!old && expected !== undefined)
       throw new AppError(
         404,
@@ -262,7 +279,16 @@ export class Vault {
       const ids = inlineTargets(
         n.body +
           "\n" +
-          (n.canvas?.items.map((item) => item.text || "").join("\n") || ""),
+          (n.canvas?.items.map((item) => item.text || "").join("\n") || "") +
+          (n.pages || [])
+            .map(
+              (page) =>
+                "\n" +
+                page.body +
+                "\n" +
+                page.canvas.items.map((item) => item.text || "").join("\n"),
+            )
+            .join("\n"),
       ).filter((id) => id !== n.id && all.some((x) => x.id === id));
       n = {
         ...n,

@@ -320,6 +320,20 @@
   border-radius: 0;
   touch-action: none;
 }
+/* Ink and placed text retain page coordinates at every viewport width. */
+.clean-sheet .notebook-sheet-content .sheet-object {
+  position: absolute !important;
+  left: var(--tablet-object-x) !important;
+  top: var(--tablet-object-y) !important;
+  width: var(--tablet-object-width) !important;
+  height: var(--tablet-object-height) !important;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+}
+.clean-sheet .notebook-sheet-content .sheet-object.kind-pen {
+  min-height: 0;
+}
 .clean-sheet .sheet-object:is(.kind-text, .kind-table) {
   height: var(--object-height) !important;
   min-height: 16px;
@@ -439,6 +453,18 @@
   pointer-events: auto;
   border: 1px solid var(--muted);
   background: var(--surface);
+}
+.clean-sheet .sheet-object.is-resizing .object-resize,
+.clean-sheet .group-resize.is-resizing {
+  width: 24px;
+  height: 24px;
+  right: -12px;
+  bottom: -12px;
+  outline: 2px solid var(--green);
+}
+.clean-sheet .group-resize.is-resizing {
+  right: auto;
+  bottom: auto;
 }
 .clean-sheet .is-gesturing :is(.object-grip, .object-resize) {
   display: none;
@@ -720,16 +746,6 @@
   }
   .clean-sheet .notebook-sheet-content {
     min-width: 0 !important;
-  }
-  .clean-sheet .sheet-object {
-    position: relative !important;
-    left: auto !important;
-    top: auto !important;
-    max-width: 100%;
-    margin: 16px 0;
-  }
-  .clean-sheet .sheet-object.kind-text {
-    width: 100% !important;
   }
 }
 .device-pairing .device-qr {
@@ -1022,6 +1038,150 @@
   z-index: 2;
 }
 /* Keep the working sheet in the viewport. */
+body.notebook-focus-mode {
+  overflow: hidden;
+}
+.sheet-viewport {
+  position: relative;
+  min-height: 0;
+  width: 100%;
+}
+.notebook-sheet.canvas-focus > .sheet-viewport {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.notebook-sheet.canvas-focus > .sheet-viewport > .sheet-scroll {
+  height: 100%;
+  box-sizing: border-box;
+  scrollbar-width: none;
+}
+.notebook-sheet.canvas-focus
+  > .sheet-viewport
+  > .sheet-scroll::-webkit-scrollbar {
+  display: none;
+}
+.sheet-minimal-toolbar svg,
+.paper-navigation svg,
+.ai-notes-heading svg,
+.paper-end-actions svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+.synapse-wheel svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  flex-shrink: 0;
+}
+.notebook-sheet.canvas-focus {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 0;
+  border-radius: 0;
+}
+.clean-sheet.canvas-focus .sheet-toolbar {
+  position: relative;
+  flex: 0 0 auto;
+  top: 0;
+  padding: 8px;
+  max-height: 30dvh;
+  overflow: auto;
+}
+.clean-sheet.canvas-focus .sheet-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+.clean-sheet.canvas-focus .extend-sheet {
+  display: none;
+}
+.clean-sheet.stylus-workspace .sheet-tool-group > button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.sheet-save-state {
+  order: 3;
+  margin-inline: 6px;
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sheet-save-state.error {
+  color: var(--danger);
+}
+.note-page-actions {
+  margin-top: 16px;
+}
+.note-page-actions > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 10px 0;
+}
+.clean-sheet.stylus-workspace
+  .notebook-sheet-content:not(.tool-write):not(.tool-text):not(.tool-table),
+.clean-sheet .tool-hand,
+.clean-sheet .tool-hand * {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.clean-sheet .tool-hand {
+  cursor: grab;
+}
+.clean-sheet .sheet-minimal-toolbar {
+  justify-content: flex-start;
+  gap: 10px;
+}
+.clean-sheet .sheet-minimal-toolbar .sheet-tool-group {
+  flex: 0 0 auto;
+}
+.clean-sheet .sheet-minimal-toolbar button {
+  width: 40px;
+  height: 40px;
+}
+.clean-sheet .sheet-minimal-toolbar .brush-swatch {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+}
+.sheet-brush-settings {
+  position: absolute;
+  right: 12px;
+  top: 64px;
+  z-index: 60;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  width: 240px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #10251d26;
+}
+.sheet-brush-settings label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sheet-brush-settings input[type="range"] {
+  width: 100%;
+}
 .clean-sheet .sheet-scroll {
   overflow: auto;
   max-height: calc(100dvh - 220px);

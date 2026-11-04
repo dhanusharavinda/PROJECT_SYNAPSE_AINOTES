@@ -344,7 +344,7 @@
   --note-font: "Lora", Georgia, serif;
 }
 .font-handwritten {
-  --note-font: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+  --note-font: var(--handwriting-font, "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive);
 }
 .font-handwritten .note-editor {
   font-size: 17px;
@@ -866,7 +866,7 @@
     font-size: 16px;
     padding: 0;
   }
-  .notebook-sheet-content {
+  .notebook-sheet:not(.clean-sheet) .notebook-sheet-content {
     min-height: 0 !important;
   }
 }

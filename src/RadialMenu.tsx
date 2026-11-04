@@ -44,6 +44,19 @@ import {
   Eraser,
   PaintBucket,
   Workflow,
+  Hand,
+  Settings2,
+  ClipboardPaste,
+  CopyPlus,
+  Scissors,
+  BringToFront,
+  SendToBack,
+  ZoomIn,
+  Scan,
+  Sun,
+  ALargeSmall,
+  SlidersHorizontal,
+  Tablet,
 } from "lucide-react";
 import "./canvas-tools.css";
 type Action = ReactElement<any>;
@@ -57,6 +70,20 @@ function labelOf(node: ReactNode): string {
     .trim();
 }
 function iconFor(label: string) {
+  if (/clear.*background/i.test(label)) return Eraser;
+  if (/brush settings/i.test(label)) return SlidersHorizontal;
+  if (/stylus mode/i.test(label)) return Tablet;
+  if (/zoom/i.test(label)) return ZoomIn;
+  if (/switch theme/i.test(label)) return Sun;
+  if (/switch font/i.test(label)) return ALargeSmall;
+  if (/select entire/i.test(label)) return Scan;
+  if (/write cursor/i.test(label)) return Type;
+  if (/bring.*(front|forward)/i.test(label)) return BringToFront;
+  if (/send.*(back|backward)/i.test(label)) return SendToBack;
+  if (/duplicate/i.test(label)) return CopyPlus;
+  if (/paste/i.test(label)) return ClipboardPaste;
+  if (/cut/i.test(label)) return Scissors;
+  if (/hand tool/i.test(label)) return Hand;
   if (/delete|remove/i.test(label)) return Trash2;
   if (/copy|duplicate|paste|cut/i.test(label)) return Copy;
   if (/undo/i.test(label)) return Undo2;
@@ -91,10 +118,13 @@ function iconFor(label: string) {
   return Plus;
 }
 const categoryIcons: Record<string, typeof Type> = {
+  Settings: Settings2,
+  Arrows: ArrowUpRight,
   Select: MousePointer2,
   Edit: Copy,
   Write: Type,
   Draw: PenLine,
+  Shapes: Square,
   Insert: Plus,
   Connect: Link2,
   Arrange: Layers,
@@ -142,6 +172,100 @@ function actionsFrom(
     return [{ action: child as Action, group, label }];
   });
 }
+export function CompactToolMenu({
+  x,
+  y,
+  children,
+  onClose,
+  keyboard,
+}: {
+  x: number;
+  y: number;
+  children: ReactNode;
+  onClose: () => void;
+  keyboard?: boolean;
+  persistent?: boolean;
+}) {
+  const actions = actionsFrom(children);
+  const groups = [...new Set(actions.map((a) => a.group))];
+  const [group, setGroup] = useState(groups[0]);
+  const root = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const down = (event: Event) => {
+      if (!root.current?.contains(event.target as Node)) close.current();
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close.current();
+      }
+    };
+    if (keyboard)
+      root.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, []);
+  return createPortal(
+    <div
+      ref={root}
+      className="sheet-context compact-tool-menu"
+      role="menu"
+      aria-label="All tools"
+      style={{
+        left: Math.max(8, Math.min(x, innerWidth - 312)),
+        top: Math.max(8, Math.min(y, innerHeight - 330)),
+      }}
+    >
+      <div
+        className="compact-tool-groups"
+        role="group"
+        aria-label="Tool categories"
+      >
+        {groups.map((name) => {
+          const Icon = categoryIcons[name] || Plus;
+          return (
+            <button
+              key={name}
+              title={name}
+              aria-label={name}
+              aria-pressed={group === name}
+              onClick={() => setGroup(name)}
+            >
+              <Icon size={17} />
+            </button>
+          );
+        })}
+      </div>
+      <div className="compact-tool-actions" role="group" aria-label={group}>
+        {actions
+          .filter((a) => a.group === group)
+          .map(({ action, label }, index) => {
+            const Icon = iconFor(label);
+            return cloneElement(action, {
+              key: label + index,
+              role: "menuitem",
+              title: label,
+              children: (
+                <>
+                  <Icon size={17} />
+                  <span>{label}</span>
+                </>
+              ),
+            });
+          })}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function RadialMenu({
   x,
   y,
@@ -149,6 +273,7 @@ export default function RadialMenu({
   onClose,
   keyboard = false,
   label = "Page actions",
+  persistent = true,
 }: {
   x: number;
   y: number;
@@ -156,6 +281,7 @@ export default function RadialMenu({
   onClose: () => void;
   keyboard?: boolean;
   label?: string;
+  persistent?: boolean;
 }) {
   const seen = new Set<string>();
   const actions = actionsFrom(children).filter((a) => {
@@ -166,34 +292,16 @@ export default function RadialMenu({
   const groups = [...new Set(actions.map((a) => a.group))];
   const [active, setActive] = useState<string>();
   const [caption, setCaption] = useState("");
-  const [fading, setFading] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const keyboardMode = useRef(keyboard);
   const opener = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  function cancelFade() {
-    clearTimeout(timer.current);
-    setFading(false);
-  }
-  function idle() {
-    clearTimeout(timer.current);
-    if (keyboardMode.current && root.current?.contains(document.activeElement))
-      return;
-    timer.current = setTimeout(() => {
-      if (root.current?.matches(":hover")) return;
-      setFading(true);
-      timer.current = setTimeout(() => closeRef.current(), 180);
-    }, 600);
-  }
   useEffect(() => {
     opener.current = document.activeElement as HTMLElement;
     if (keyboard)
       root.current
         ?.querySelector<HTMLButtonElement>(".wheel-category")
         ?.focus({ preventScroll: true });
-    else idle();
     const down = (event: Event) => {
       if (
         !root.current?.contains(event.target as Node) ||
@@ -212,34 +320,22 @@ export default function RadialMenu({
     window.addEventListener("pointerdown", down, true);
     window.addEventListener("keydown", key);
     return () => {
-      clearTimeout(timer.current);
       window.removeEventListener("pointerdown", down, true);
       window.removeEventListener("keydown", key);
     };
   }, []);
   const sub = actions.filter((a) => a.group === active);
-  const radius = active ? 150 : 108;
+  const radius = 150;
   const cx = Math.max(radius, Math.min(x, innerWidth - radius)),
     cy = Math.max(radius, Math.min(y, innerHeight - radius));
   return createPortal(
     <div
       ref={root}
-      className={`synapse-wheel sheet-context context-menu${active ? " is-expanded" : ""}${fading ? " is-fading" : ""}`}
+      className={`synapse-wheel sheet-context context-menu${persistent ? " is-stylus" : ""}${active ? " is-expanded" : ""}`}
       role="menu"
       aria-label={label}
       style={{ left: cx, top: cy }}
-      onPointerEnter={() => {
-        keyboardMode.current = false;
-        cancelFade();
-      }}
-      onPointerLeave={idle}
-      onFocusCapture={cancelFade}
-      onBlurCapture={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) idle();
-      }}
       onKeyDown={(e) => {
-        keyboardMode.current = true;
-        cancelFade();
         if (
           [
             "ArrowRight",
@@ -286,6 +382,7 @@ export default function RadialMenu({
         {groups.map((group, index) => {
           const Icon = categoryIcons[group] || Circle;
           const angle = (index / groups.length) * Math.PI * 2 - Math.PI / 2;
+          const ring = groups.length > 9 ? 76 : 68;
           return (
             <button
               key={group}
@@ -296,8 +393,8 @@ export default function RadialMenu({
               aria-expanded={active === group}
               style={
                 {
-                  "--x": `${Math.cos(angle) * 68}px`,
-                  "--y": `${Math.sin(angle) * 68}px`,
+                  "--x": `${Math.cos(angle) * ring}px`,
+                  "--y": `${Math.sin(angle) * ring}px`,
                 } as CSSProperties
               }
               onPointerEnter={() => {
@@ -331,6 +428,13 @@ export default function RadialMenu({
       >
         {sub.map(({ action, label }, index) => {
           const Icon = iconFor(label);
+          const authoredIcon = Children.toArray(action.props.children).find(
+            (child) =>
+              isValidElement(child) &&
+              (child.type === "svg" ||
+                typeof child.type === "function" ||
+                typeof child.type === "object"),
+          );
           const angle = (index / sub.length) * Math.PI * 2 - Math.PI / 2;
           return cloneElement(action, {
             key: action.key || `${label}-${index}`,
@@ -350,8 +454,20 @@ export default function RadialMenu({
             },
             children: (
               <>
-                <Icon size={17} />
-                <span>{label}</span>
+                {authoredIcon ||
+                  (action.props["data-pastel"] ||
+                  action.props["data-background"] ? (
+                    <span
+                      className="wheel-swatch"
+                      data-pastel={action.props["data-pastel"]}
+                      data-background={action.props["data-background"]}
+                    >
+                      Aa
+                    </span>
+                  ) : (
+                    <Icon size={17} />
+                  ))}
+                <span>{action.props["data-menu-caption"] || label}</span>
               </>
             ),
           });

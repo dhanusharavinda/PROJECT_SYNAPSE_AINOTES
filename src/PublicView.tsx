@@ -3,6 +3,7 @@ import { setViewMedia, mediaUrl } from "./api";
 import { storedNoteSchema } from "./noteSchema";
 import type { Note } from "./types";
 import CanvasRead from "./CanvasRead";
+import NotebookRead from "./NotebookRead";
 import { MD } from "./ui";
 import { bodyOf } from "./content";
 const decode = (text: string) =>
@@ -108,9 +109,7 @@ export default function PublicView() {
         </span>
       </header>
       <h1>{data.note.title}</h1>
-      <CanvasRead canvas={data.note.canvas || { items: [], height: 500 }}>
-        <MD text={bodyOf(data.note)} />
-      </CanvasRead>
+      <NotebookRead note={data.note}/>
       {data.sources.length > 0 && (
         <details>
           <summary>Resources</summary>

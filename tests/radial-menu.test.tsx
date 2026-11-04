@@ -13,6 +13,64 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+it("keeps authored icons, captions, active states and handlers", () => {
+  const action = vi.fn();
+  render(
+    <RadialMenu x={300} y={300} onClose={() => {}}>
+      <button
+        data-menu-group="Arrows"
+        data-menu-caption="Elbow"
+        aria-label="Elbow arrow"
+        aria-pressed
+        onClick={action}
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M4 20 V4 H20" />
+        </svg>
+        Elbow arrow
+      </button>
+    </RadialMenu>,
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Arrows" }));
+  const button = screen.getByRole("button", { name: "Elbow arrow" });
+  expect(button.querySelector("path")?.getAttribute("d")).toBe("M4 20 V4 H20");
+  expect(button.textContent).toBe("Elbow");
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(button);
+  expect(action).toHaveBeenCalledOnce();
+});
+it("uses distinct icons for clipboard and settings actions and removes repeated actions", () => {
+  const labels = [
+    "Copy selection",
+    "Duplicate",
+    "Paste objects",
+    "Cut",
+    "Brush settings",
+    "Stylus mode",
+    "Reset canvas zoom",
+    "Switch theme",
+    "Switch font",
+  ];
+  render(
+    <RadialMenu x={300} y={300} onClose={() => {}}>
+      {[...labels, "Copy selection"].map((label, i) => (
+        <button key={i} data-menu-group="Settings">
+          {label}
+        </button>
+      ))}
+    </RadialMenu>,
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+  const icons = labels.map(
+    (label) =>
+      screen.getByRole("button", { name: label }).querySelector("svg")!
+        .innerHTML,
+  );
+  expect(new Set(icons).size).toBe(labels.length);
+  expect(
+    screen.getAllByRole("button", { name: "Copy selection" }),
+  ).toHaveLength(1);
+});
 it("dismisses on an outside pointer click even when the canvas stops bubbling", () => {
   const close = vi.fn();
   render(
@@ -52,7 +110,7 @@ it("reveals contextual actions by category and preserves their handlers", () => 
   fireEvent.keyDown(window, { key: "Escape" });
   expect(close).toHaveBeenCalledOnce();
 });
-it("fades after idle outside, but stays open while the pointer is choosing", () => {
+it("never fades or times out when the pointer leaves", () => {
   vi.useFakeTimers();
   const close = vi.fn();
   render(
@@ -65,10 +123,9 @@ it("fades after idle outside, but stays open while the pointer is choosing", () 
   act(() => vi.advanceTimersByTime(6000));
   expect(close).not.toHaveBeenCalled();
   fireEvent.pointerLeave(menu);
-  act(() => vi.advanceTimersByTime(600));
-  expect(menu.classList.contains("is-fading")).toBe(true);
-  act(() => vi.advanceTimersByTime(180));
-  expect(close).toHaveBeenCalledOnce();
+  act(() => vi.advanceTimersByTime(60000));
+  expect(menu.classList.contains("is-fading")).toBe(false);
+  expect(close).not.toHaveBeenCalled();
 });
 it("focuses keyboard-opened actions, supports arrows, and returns focus on Escape", () => {
   vi.useFakeTimers();

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import {
+  isEmojiText,
   eraseStrokes,
   rebaseScene,
   finishStroke,
@@ -7,6 +8,28 @@ import {
   resizeItem,
   translate,
 } from "../src/sheetModel";
+it("scales emoji glyphs with their object while ordinary text boxes continue to reflow", () => {
+  const sticker = {
+    id: "emoji",
+    kind: "text" as const,
+    x: 100,
+    y: 100,
+    width: 100,
+    height: 40,
+    text: "🥸",
+    textScale: 1,
+  };
+  expect(resizeItem(sticker, 100, 40)).toMatchObject({
+    width: 200,
+    height: 80,
+    textScale: 2,
+  });
+  expect(
+    resizeItem({ ...sticker, text: "Study notes" }, 100, 40),
+  ).toMatchObject({ width: 200, height: 80, textScale: 1 });
+  expect(isEmojiText("👩🏽‍💻 🇮🇪")).toBe(true);
+  expect(isEmojiText("123")).toBe(false);
+});
 import type { CanvasItem } from "../src/types";
 const stroke: CanvasItem = {
   id: crypto.randomUUID(),

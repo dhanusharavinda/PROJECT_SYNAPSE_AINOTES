@@ -56,7 +56,7 @@ it("rejects an insertion that would exceed the saved-page object limit", () => {
       {
         width: 1000,
         height: 500,
-        items: Array.from({ length: 1500 }, () => ({
+        items: Array.from({ length: 20000 }, () => ({
           ...item,
           id: crypto.randomUUID(),
         })),

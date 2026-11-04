@@ -42,6 +42,199 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+it("offers four unique arrow icons and draws four different arrow geometries", () => {
+  const icons: string[] = [],
+    geometries: string[] = [];
+  for (const variant of ["Straight", "Curved", "Elbow", "Double"]) {
+    const change = vi.fn();
+    const { container } = render(
+      <NotebookSheet
+        value={{ width: 1000, height: 700, items: [] }}
+        onChange={change}
+        onImage={() => {}}
+      >
+        <p>Page</p>
+      </NotebookSheet>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Arrows" }));
+    const button = screen.getByRole("button", { name: variant + " arrow" });
+    icons.push(button.querySelector("svg")!.innerHTML);
+    fireEvent.click(button);
+    const sheet = screen.getByRole("group", {
+      name: "Write and draw on this page",
+    });
+    fireEvent.pointerDown(sheet, {
+      pointerId: 1,
+      button: 0,
+      clientX: 40,
+      clientY: 50,
+    });
+    fireEvent.pointerMove(sheet, { pointerId: 1, clientX: 160, clientY: 140 });
+    fireEvent.pointerUp(sheet, { pointerId: 1, clientX: 160, clientY: 140 });
+    expect(change.mock.calls.at(-1)![0].items[0].arrowStyle).toBe(
+      variant.toLowerCase(),
+    );
+    const path = container.querySelector("svg.sheet-shape path[marker-end]")!;
+    geometries.push(
+      JSON.stringify([
+        path.getAttribute("d"),
+        !!path.getAttribute("marker-start"),
+      ]),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Draw" }));
+    expect(screen.queryByRole("button", { name: "Arrow" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Insert" }));
+    expect(screen.queryByRole("menuitem", { name: "Write here" })).toBeNull();
+    cleanup();
+  }
+  expect(new Set(icons).size).toBe(4);
+  expect(new Set(geometries).size).toBe(4);
+});
+it("pastes from a freshly opened wheel even before the canvas has been focused", async () => {
+  vi.stubGlobal("synapseEditing", {
+    readClipboard: async () => "Clipboard study note",
+  });
+  const change = vi.fn();
+  render(
+    <NotebookSheet
+      value={{ width: 1000, height: 700, items: [] }}
+      onChange={change}
+      onImage={() => {}}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Paste objects" }));
+  await waitFor(() =>
+    expect(change.mock.calls.at(-1)![0].items[0].text).toBe(
+      "Clipboard study note",
+    ),
+  );
+});
+it("returns from a highlighter to the previous pen instead of leaving the highlighter active", () => {
+  const change = vi.fn();
+  render(
+    <NotebookSheet
+      value={{ width: 1000, height: 700, items: [] }}
+      onChange={change}
+      onImage={() => {}}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  const sheet = screen.getByRole("group", {
+    name: "Write and draw on this page",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Draw" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pink highlighter" }));
+  const draw = () => {
+    fireEvent.pointerDown(sheet, {
+      pointerId: 1,
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerUp(sheet, { pointerId: 1, clientX: 100, clientY: 100 });
+  };
+  draw();
+  expect(change.mock.calls.at(-1)![0].items.at(-1).opacity).toBe(0.32);
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Draw" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Pen" }));
+  draw();
+  expect(change.mock.calls.at(-1)![0].items.at(-1)).toMatchObject({
+    color: "#24392f",
+    strokeWidth: 2.4,
+    opacity: 1,
+  });
+});
+it("disables unsupported commands instead of presenting actions that do nothing", () => {
+  const command = vi.fn();
+  render(
+    <NotebookSheet
+      onChange={() => {}}
+      onImage={() => {}}
+      onCommand={command}
+      supportedCommands={["flowchart"]}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Connect" }));
+  expect(
+    (screen.getByRole("button", { name: "New page" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(
+    (screen.getByRole("button", { name: "Link a note" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Study" }));
+  expect(
+    (screen.getByRole("button", { name: "Study lens" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Insert" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Make diagram" }));
+  expect(command).toHaveBeenCalledExactlyOnceWith("flowchart");
+});
+it("activates a real resize handle from the wheel and resizes the selected object", async () => {
+  const change = vi.fn();
+  const { container } = render(
+    <NotebookSheet
+      value={{
+        width: 1000,
+        height: 700,
+        items: [
+          {
+            id: "shape",
+            kind: "rectangle",
+            x: 100,
+            y: 100,
+            width: 80,
+            height: 60,
+          },
+        ],
+      }}
+      onChange={change}
+      onImage={() => {}}
+    >
+      <p>Page</p>
+    </NotebookSheet>,
+  );
+  fireEvent.contextMenu(container.querySelector('[data-object-id="shape"]')!, {
+    clientX: 200,
+    clientY: 200,
+  });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Object" }));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Resize", exact: false } as any),
+  );
+  const handle = screen.getByRole("button", { name: "Resize object" });
+  await waitFor(() => expect(document.activeElement).toBe(handle));
+  expect(container.querySelector(".tool-select .is-resizing")).toBeTruthy();
+  fireEvent.pointerDown(handle, {
+    pointerId: 1,
+    button: 0,
+    clientX: 180,
+    clientY: 160,
+  });
+  const sheet = screen.getByRole("group", {
+    name: "Write and draw on this page",
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 1, clientX: 220, clientY: 180 });
+  fireEvent.pointerUp(sheet, { pointerId: 1, clientX: 220, clientY: 180 });
+  expect(change.mock.calls.at(-1)![0].items[0]).toMatchObject({
+    width: 120,
+    height: 80,
+  });
+});
 it("resizes the main writing area horizontally and vertically, then undoes that change", () => {
   const change = vi.fn();
   render(
@@ -176,9 +369,11 @@ it("zooms only with Ctrl/Meta scroll and pans with the middle mouse without crea
   expect(sheet.style.zoom).toBe("1");
   fireEvent.wheel(scroll, { deltaY: -100, ctrlKey: true });
   await waitFor(() => expect(Number(sheet.style.zoom)).toBeGreaterThan(1));
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
   expect(
     screen.getByRole("button", { name: "Reset canvas zoom" }).textContent,
-  ).not.toBe("100%");
+  ).not.toContain("(100%)");
   scroll.scrollLeft = 200;
   scroll.scrollTop = 300;
   fireEvent.pointerDown(scroll, {
@@ -192,6 +387,8 @@ it("zooms only with Ctrl/Meta scroll and pans with the middle mouse without crea
   expect(scroll.scrollTop).toBe(350);
   fireEvent.pointerUp(scroll, { pointerId: 3 });
   expect(change).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
   fireEvent.click(screen.getByRole("button", { name: "Reset canvas zoom" }));
   expect(sheet.style.zoom).toBe("1");
 });
@@ -281,21 +478,29 @@ it("coalesces a wheel burst into one anchored zoom and normalizes line units", a
   expect(scroll.scrollTop).toBeCloseTo(350 * scale - 200);
   expect(change).not.toHaveBeenCalled();
 });
-it("offers symbolic arrows from the arrow tool without a separate text dropdown", () => {
+it("offers arrow variants through the wheel and uses the chosen variant", () => {
+  const change = vi.fn();
   render(
-    <NotebookSheet onChange={() => {}} onDrawing={() => {}} onImage={() => {}}>
+    <NotebookSheet onChange={change} onDrawing={() => {}} onImage={() => {}}>
       <p />
     </NotebookSheet>,
   );
   expect(screen.queryByRole("combobox", { name: "Arrow type" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Arrow tool" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Curved arrow" }));
-  expect(
-    screen
-      .getByRole("button", { name: "Arrow tool" })
-      .getAttribute("aria-pressed"),
-  ).toBe("true");
-  expect(screen.queryByRole("menu", { name: "Arrow variants" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Arrows" }));
+  fireEvent.click(screen.getByRole("button", { name: "Curved arrow" }));
+  const sheet = screen.getByRole("group", {
+    name: "Write and draw on this page",
+  });
+  fireEvent.pointerDown(sheet, {
+    pointerId: 7,
+    button: 0,
+    clientX: 40,
+    clientY: 50,
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 7, clientX: 100, clientY: 110 });
+  fireEvent.pointerUp(sheet, { pointerId: 7, clientX: 100, clientY: 110 });
+  expect(change.mock.calls.at(-1)![0].items[0].arrowStyle).toBe("curved");
 });
 it("pins selected content for Practice and keeps Study lens transient", () => {
   const change = vi.fn();
@@ -338,6 +543,8 @@ it("pins selected content for Practice and keeps Study lens transient", () => {
   fireEvent.click(screen.getByRole("button", { name: "Pin as uncertain" }));
   expect(change.mock.calls.at(-1)![0].items[0].uncertain).toBe(true);
   const count = change.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "Open tool wheel" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Study" }));
   fireEvent.click(screen.getByRole("button", { name: "Study lens" }));
   expect(
     container

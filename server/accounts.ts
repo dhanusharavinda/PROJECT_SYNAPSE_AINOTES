@@ -23,6 +23,11 @@ type Identity = {
 };
 type Session = { token: string; identity: Identity };
 export class Accounts {
+  onNotebookAI?: (
+    id: string,
+    action: string,
+    body: unknown,
+  ) => Promise<unknown>;
   session?: Session;
   pending = new Map<string, { nonce: string; expires: number }>();
   peers = new Map<
@@ -255,6 +260,13 @@ export class Accounts {
       if (principal.localOwner)
         principal.email = c.membership(id)?.owner || principal.email;
       c.role(id, principal);
+      if (["handwriting", "ink-diagram"].includes(action)) {
+        if (c.role(id, principal) === "viewer")
+          throw new AppError(403, "Only editors can convert notebook ink.");
+        if (!this.onNotebookAI)
+          throw new AppError(503, "Notebook conversion is unavailable.");
+        return { status: 200, data: await this.onNotebookAI(id, action, body) };
+      }
       if (action === "create-page") {
         if (c.role(id, principal) === "viewer")
           throw new AppError(403, "Only editors can create a subpage.");
@@ -597,6 +609,8 @@ export class Accounts {
           "release",
           "upload",
           "create-page",
+          "handwriting",
+          "ink-diagram",
         ].includes(q.params.action)
       )
         throw new AppError(400, "Unknown operation.");
@@ -674,7 +688,11 @@ export class Accounts {
             z.number().int().min(0).optional().parse(b.revision),
           ),
         );
-      if (["upload", "create-page"].includes(q.params.action)) {
+      if (
+        ["upload", "create-page", "handwriting", "ink-diagram"].includes(
+          q.params.action,
+        )
+      ) {
         const result = await this.dispatch(
           "owner",
           {

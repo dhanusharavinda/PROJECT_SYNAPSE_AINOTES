@@ -164,7 +164,9 @@ export class RelayClient {
             Error("PC did not respond. Your pages stay saved and will retry."),
           );
         },
-        path === "diagram" ? 195000 : 90000,
+        /(?:^|\/)(?:diagram|handwriting|ink-diagram)$/.test(path)
+          ? 255000
+          : 90000,
       );
       this.pending.set(id, { resolve, reject, timer });
       void sendPackets(this.socket!, this.access.client, id, pub, packet).catch(

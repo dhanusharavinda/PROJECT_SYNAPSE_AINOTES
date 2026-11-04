@@ -1,5 +1,19 @@
 # Synapse on iPad and Android
 
+## Website with a read-only note and writing pad
+
+Open `/study/` in Safari for a regular website without Home Screen installation or a service worker. It displays the selected PC note read-only, alongside a separate writing pad. On narrow screens the note is a scrollable reading area above the pad.
+
+Choose **Connect & backup**, then scan the QR code displayed in Windows Synapse from inside this page, or paste its pairing link. Approve the connection and select a notebook page. The connection uses the existing paired-device protocol and requires no desktop application update.
+
+Type in **Typed notes**, draw in the Pencil pad, or use both. Fingers scroll; Pencil draws. **Erase stroke** removes a whole stroke and **Undo stroke** removes the latest one. **Send to PC** appends a new block to the end of the note. Handwriting stays editable pen strokes on the PC. Existing note content is preserved. The reader updates from the PC's acknowledged save.
+
+The PC must be awake with Synapse open. Unsent drafts are kept separately for each note in this browser. A failed send retains the exact operation for **Retry send**, including after a reload, so an acknowledgement lost on the network does not duplicate the writing. While confirmation is pending, that submitted pad cannot be edited. Other pages can still have independent drafts. If the PC page changed, the existing protocol saves a conflict copy and shows a warning. Check that copy in Windows.
+
+Use **Export writing pad** to download its JSON, particularly if the browser reports a storage error. This export is a recovery file, not the tablet notebook backup format. Browser storage can be cleared by iPadOS, and an ordinary website is not guaranteed to reopen offline. Do not clear website data until important writing has reached the PC or been exported.
+
+Validation includes an isolated browser-to-PC typed-input round trip and automated input, retry, draft recovery, pressure-preserving ink, and server persistence checks. Physical Apple Pencil latency and palm rejection still need testing on the iPad.
+
 Synapse 1.5 provides an installable tablet notebook at `/tablet/`. The Windows app remains the full workspace. Both use editable text, canvas objects and pen strokes.
 
 ## Install

@@ -11,7 +11,19 @@ export const shapeKinds = [
   "line",
 ];
 export const sameScene = (a?: NoteCanvas, b?: NoteCanvas) =>
-  JSON.stringify(a) === JSON.stringify(b);
+  a === b || JSON.stringify(a) === JSON.stringify(b);
+export function isEmojiText(text: string) {
+  const plain = text
+    .replace(/<[^>]*>/g, "")
+    .replace(/[*_`]/g, "")
+    .trim();
+  return (
+    /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(plain) &&
+    /^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Component}\u200d\ufe0f\s]+$/u.test(
+      plain,
+    )
+  );
+}
 export function translate(
   items: CanvasItem[],
   ids: string[],
@@ -37,7 +49,8 @@ export function resizeItem(
       -dx * Math.sin(angle) + dy * Math.cos(angle),
     ];
   }
-  const media = ["image", "drawing"].includes(item.kind);
+  const emoji = item.kind === "text" && isEmojiText(item.text || "");
+  const media = ["image", "drawing"].includes(item.kind) || emoji;
   const ratio =
     Math.abs(dx / item.width) >= Math.abs(dy / item.height)
       ? dx / item.width
@@ -67,7 +80,12 @@ export function resizeItem(
     ...item,
     width,
     height,
-    textScale: item.textScale,
+    textScale: emoji
+      ? Math.max(
+          0.2,
+          Math.min(20, ((item.textScale || 1) * width) / item.width),
+        )
+      : item.textScale,
     fitted: item.kind === "text" ? true : item.fitted,
     points:
       item.kind === "paint"
@@ -280,16 +298,19 @@ export function rebaseScene(
   to: NoteCanvas,
 ) {
   const eq = (a?: CanvasItem, b?: CanvasItem) =>
-    a && b
+    a === b ||
+    (a && b
       ? JSON.stringify(a, Object.keys(a).sort()) ===
         JSON.stringify(b, Object.keys(b).sort())
-      : a === b;
+      : false);
   let items = [...current.items],
     conflicts = 0;
   const ids = new Set([...from.items, ...to.items].map((i) => i.id));
+  const fromById = new Map(from.items.map((i) => [i.id, i]));
+  const toById = new Map(to.items.map((i) => [i.id, i]));
   for (const id of ids) {
-    const expected = from.items.find((i) => i.id === id),
-      desired = to.items.find((i) => i.id === id);
+    const expected = fromById.get(id),
+      desired = toById.get(id);
     if (eq(expected, desired)) continue;
     const index = items.findIndex((i) => i.id === id),
       actual = items[index];
@@ -314,16 +335,15 @@ export function rebaseScene(
     toOrder = to.items.map((i) => i.id);
   if (
     fromOrder.length === toOrder.length &&
-    fromOrder.every((id) => toOrder.includes(id)) &&
+    fromOrder.every((id) => toById.has(id)) &&
     fromOrder.join() !== toOrder.join() &&
     current.items
       .filter((i) => ids.has(i.id))
       .map((i) => i.id)
       .join() === fromOrder.join()
   ) {
-    const ordered = toOrder
-      .map((id) => items.find((i) => i.id === id)!)
-      .filter(Boolean);
+    const currentById = new Map(items.map((i) => [i.id, i]));
+    const ordered = toOrder.map((id) => currentById.get(id)!).filter(Boolean);
     let cursor = 0;
     items = items.map((i) => (ids.has(i.id) ? ordered[cursor++] : i));
   }

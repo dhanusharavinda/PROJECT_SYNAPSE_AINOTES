@@ -214,7 +214,7 @@ export class RelayHost {
     );
     if (
       typeof input.path === "string" &&
-      /^collab\/(create-page|open|watch|snapshot|acquire|change|release|file|upload)$/.test(
+      /^collab\/(create-page|open|watch|snapshot|acquire|change|release|file|upload|handwriting|ink-diagram)$/.test(
         input.path,
       ) &&
       this.onCollaboration
@@ -243,7 +243,7 @@ export class RelayHost {
     }
     if (
       typeof input.path !== "string" ||
-      !/^(connect|diagram|notes(?:\?since=[a-zA-Z0-9%_-]*)?|note|file(?:\?folder=(attachments|drawings)&name=[a-f0-9-]{36}\.(png|jpe?g|webp|svg|pdf|json))?)$/.test(
+      !/^(connect|diagram|handwriting|ink-diagram|notes(?:\?since=[a-zA-Z0-9%_-]*)?|note|file(?:\?folder=(attachments|drawings)&name=[a-f0-9-]{36}\.(png|jpe?g|webp|svg|pdf|json))?)$/.test(
         input.path,
       )
     )
@@ -269,7 +269,9 @@ export class RelayHost {
           body:
             input.body === undefined ? undefined : JSON.stringify(input.body),
           signal: AbortSignal.timeout(
-            input.path === "diagram" ? 185000 : 30000,
+            ["diagram", "handwriting", "ink-diagram"].includes(input.path)
+              ? 245000
+              : 30000,
           ),
         },
       );

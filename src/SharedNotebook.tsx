@@ -13,13 +13,22 @@ import type { Note, NoteCanvas } from "./types";
 import type { EditorHandle } from "./Editor";
 import { storedNoteSchema, fileNameSchema } from "./noteSchema";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
+import PagedNotebook from "./PagedNotebook";
+import NotebookRead from "./NotebookRead";
 import RichEditor from "./RichEditor";
 import CanvasRead from "./CanvasRead";
 import { MD, Modal } from "./ui";
 import { bodyOf } from "./content";
+import {
+  isNotebookExtraCell,
+  notebookExtraValue,
+  applyNotebookExtra,
+} from "./notebookModel";
 import { nextTheme } from "./themes";
 import { Collaborators } from "./AccountPanel";
 import SlidesExport from "./SlidesExport";
+import { NoteDraftWriter } from "./noteDrafts";
+import { assertNoteFits } from "./notebookCapacity";
 type Peer = {
   session: string;
   cell: string;
@@ -36,8 +45,44 @@ type Snapshot = {
   presence: Peer[];
 };
 const equal = (a: unknown, b: unknown) =>
-  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  a === b || JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+function cellValues(note: Note) {
+  const values = new Map<string, unknown>();
+  for (const key of [
+    "title",
+    "fileName",
+    "body",
+    "context",
+    "group",
+    "theme",
+  ] as const)
+    values.set(key, note[key] ?? null);
+  values.set("canvasSize", value(note, "canvasSize"));
+  values.set(
+    "pageOrder",
+    (note.pages || []).map((page) => page.id),
+  );
+  values.set("paperTexture", note.paperTexture ?? null);
+  values.set("aiNotes", note.aiNotes ?? null);
+  for (const item of note.canvas?.items || [])
+    values.set("item/" + item.id, item);
+  for (const page of note.pages || []) {
+    const prefix = `page/${page.id}/`;
+    values.set(prefix + "body", page.body);
+    values.set(prefix + "paperTexture", page.paperTexture);
+    values.set(prefix + "aiNotes", page.aiNotes ?? null);
+    values.set(prefix + "canvasSize", {
+      width: page.canvas.width || 1100,
+      height: page.canvas.height,
+      ...(page.canvas.prose ? { prose: page.canvas.prose } : {}),
+    });
+    for (const item of page.canvas.items)
+      values.set(prefix + "item/" + item.id, item);
+  }
+  return values;
+}
 function value(n: Note, cell: string): unknown {
+  if (isNotebookExtraCell(cell)) return notebookExtraValue(n, cell);
   if (cell === "canvasSize")
     return {
       width: n.canvas?.width || 1100,
@@ -49,6 +94,7 @@ function value(n: Note, cell: string): unknown {
   return (n as any)[cell] ?? null;
 }
 function apply(n: Note, cell: string, v: any): Note {
+  if (isNotebookExtraCell(cell)) return applyNotebookExtra(n, cell, v);
   if (cell === "canvasSize")
     return { ...n, canvas: { ...v, items: n.canvas?.items || [] } };
   if (cell.startsWith("item/")) {
@@ -108,6 +154,7 @@ export default function SharedNotebook({
   const current = useRef<Note | undefined>(undefined),
     baseline = useRef<Snapshot | undefined>(undefined),
     pending = useRef(new Map<string, { base?: string; value: unknown }>()),
+    sending = useRef(new Map<string, { base?: string; value: unknown }>()),
     inflight = useRef<Promise<void> | undefined>(undefined),
     timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
     cell = useRef(""),
@@ -146,6 +193,14 @@ export default function SharedNotebook({
   const [reviewError, setReviewError] = useState(false);
   const [recoveredDraft, setRecoveredDraft] = useState<Note>();
   const draftKey = "synapse-shared-draft:" + id;
+  const [draftReady, setDraftReady] = useState(false);
+  const [backupError, setBackupError] = useState("");
+  const lastStaged = useRef<Note | undefined>(undefined);
+  const draftWriter = useRef<NoteDraftWriter | null>(null);
+  if (!draftWriter.current)
+    draftWriter.current = new NoteDraftWriter(draftKey, (error) =>
+      setBackupError(error.message),
+    );
   const bodyEditor = useRef<EditorHandle>(null);
   const [linkedPages, setLinkedPages] = useState<any[]>([]);
   const ownSession = useRef(actor);
@@ -173,6 +228,7 @@ export default function SharedNotebook({
     const first = !baseline.current;
     baseline.current = fresh;
     let n = fresh.note;
+    for (const [k, p] of sending.current) n = apply(n, k, p.value);
     for (const [k, p] of pending.current) n = apply(n, k, p.value);
     current.current = n;
     if (alive.current) {
@@ -180,24 +236,58 @@ export default function SharedNotebook({
       setNote(n);
       if (first) {
         setStatus("Connected");
-        try {
-          const raw = localStorage.getItem(draftKey);
-          if (raw) {
-            const parsed = storedNoteSchema.safeParse(JSON.parse(raw));
-            if (parsed.success && parsed.data.id === id)
-              setRecoveredDraft(parsed.data as Note);
-          }
-        } catch {}
+        void draftWriter
+          .current!.read()
+          .then((recovered) => {
+            if (!alive.current) return;
+            if (recovered) setRecoveredDraft(recovered);
+            else {
+              const raw = localStorage.getItem(draftKey);
+              if (raw) {
+                const parsed = storedNoteSchema.safeParse(JSON.parse(raw));
+                if (parsed.success && parsed.data.id === id)
+                  setRecoveredDraft(parsed.data as Note);
+              }
+            }
+          })
+          .catch((error) => {
+            if (alive.current) setBackupError(error.message);
+          })
+          .finally(() => {
+            if (alive.current) setDraftReady(true);
+          });
       }
     }
   }
-  async function flush() {
+  async function flush(flushInput = true) {
+    if (flushInput) sheet.current?.flush();
     if (inflight.current) return inflight.current;
     const run = (async () => {
+      await draftWriter.current!.flush().then(
+        () => {
+          if (alive.current) setBackupError("");
+          try {
+            localStorage.removeItem(draftKey);
+          } catch {}
+        },
+        (error) => {
+          if (alive.current) setBackupError(error.message);
+        },
+      );
+      try {
+        if (current.current) assertNoteFits(current.current);
+      } catch (error) {
+        if (alive.current) {
+          setError((error as Error).message);
+          setStatus("Draft kept on this device");
+        }
+        throw error;
+      }
       while (pending.current.size || uncertain.current) {
         const resending = uncertain.current;
         const batch =
           resending?.batch || [...pending.current.entries()].slice(0, 200);
+        sending.current = new Map(batch);
         if (!resending) for (const [k] of batch) pending.current.delete(k);
         try {
           const changes = resending?.changes || [];
@@ -245,6 +335,7 @@ export default function SharedNotebook({
             else if (p) p.base = await hashValue(value(saved, k));
           }
           uncertain.current = undefined;
+          sending.current.clear();
           adopt(fresh);
           for (const [k] of batch)
             if (k !== cell.current)
@@ -252,26 +343,35 @@ export default function SharedNotebook({
         } catch (e) {
           for (const [k, p] of batch)
             if (!pending.current.has(k)) pending.current.set(k, p);
+          sending.current.clear();
           if (alive.current) {
             const status = (e as any).status;
             if (!status || status >= 500 || [408, 423, 429].includes(status)) {
               setError("");
               setStatus(
                 status === 423
-                  ? "Waiting for the other editor. Your draft is saved here."
-                  : "Reconnecting. Your draft is saved here.",
+                  ? draftWriter.current!.hasStored(lastStaged.current)
+                    ? "Waiting for the other editor. Your draft is saved here."
+                    : "Waiting for the other editor. Keep this page open."
+                  : draftWriter.current!.hasStored(lastStaged.current)
+                    ? "Reconnecting. Your draft is saved here."
+                    : "Reconnecting. Keep this page open.",
               );
               if (!timer.current)
                 timer.current = setTimeout(
                   () => {
                     timer.current = undefined;
-                    void flush().catch(() => {});
+                    void flush(false).catch(() => {});
                   },
                   Math.min(8000, 1000 * 2 ** retryCount.current++),
                 );
             } else {
               setError((e as Error).message);
-              setStatus("Draft kept on this device");
+              setStatus(
+                draftWriter.current!.hasStored(lastStaged.current)
+                  ? "Draft kept on this device"
+                  : "Keep this page open and save a draft copy",
+              );
             }
           }
           throw e;
@@ -282,7 +382,13 @@ export default function SharedNotebook({
         setError("");
         setStatus("Saved to owner's notebook");
         onDirty?.(false);
-        localStorage.removeItem(draftKey);
+        if (lastStaged.current)
+          void draftWriter
+            .current!.acknowledge(lastStaged.current)
+            .catch((error) => setBackupError(error.message));
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {}
       }
     })();
     inflight.current = run;
@@ -295,27 +401,16 @@ export default function SharedNotebook({
   function stage(next: Note) {
     const previous = current.current;
     if (!previous) return;
-    const keys = [
-      "title",
-      "fileName",
-      "body",
-      "context",
-      "group",
-      "theme",
-      "canvasSize",
-      ...new Set(
-        [...(previous.canvas?.items || []), ...(next.canvas?.items || [])].map(
-          (i) => "item/" + i.id,
-        ),
-      ),
-    ];
+    const before = cellValues(previous),
+      after = cellValues(next);
+    const keys = new Set([...before.keys(), ...after.keys()]);
     let changed = false;
     for (const k of keys)
-      if (!equal(value(previous, k), value(next, k))) {
+      if (!equal(before.get(k), after.get(k))) {
         changed = true;
         const old = pending.current.get(k);
         pending.current.set(k, {
-          value: value(next, k),
+          value: after.get(k) ?? null,
           base: old ? old.base : baseline.current?.cells[k]?.hash,
         });
       }
@@ -325,17 +420,12 @@ export default function SharedNotebook({
     setNote(next);
     onDirty?.(true);
     setStatus("Saving...");
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(next));
-    } catch {
-      setError(
-        "Local draft space is full. Keep a draft copy if saving cannot finish.",
-      );
-    }
+    lastStaged.current = next;
+    draftWriter.current!.stage(next);
     if (!timer.current)
       timer.current = setTimeout(() => {
         timer.current = undefined;
-        void flush().catch(() => {});
+        void flush(false).catch(() => {});
       }, 180);
   }
   async function focusCell(next: string) {
@@ -399,18 +489,16 @@ export default function SharedNotebook({
           setStatus(pending.current.size ? "Saving…" : "Live");
           liveFailed = false;
         }
-        if (inflight.current) {
-          await inflight.current.catch(() => {});
-          if (stopped) return;
-          adopt(await call("snapshot"));
-        } else adopt(result.snapshot);
+        // In-flight local cells are overlaid by adopt(), so unrelated remote
+        // changes remain live even when a save acknowledgement is delayed.
+        adopt(result.snapshot);
         void watch();
       } catch (e) {
         if (stopped) return;
         liveFailed = true;
         if ([401, 403, 404, 426].includes((e as any).status))
           setError((e as Error).message);
-        else setStatus("Reconnecting. Your draft is saved here.");
+        else setStatus("Reconnecting...");
         retry = setTimeout(() => void watch(), 1500);
       }
     };
@@ -433,12 +521,32 @@ export default function SharedNotebook({
           .catch(() => {});
     }, 1000);
     onSaveReady?.(flush);
+    const backup = () => {
+      void draftWriter
+        .current!.flush()
+        .catch((error) => setBackupError(error.message));
+    };
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      sheet.current?.flush();
+      void draftWriter.current!.flush().catch(() => {});
+      if (pending.current.size || uncertain.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("pagehide", backup);
+    document.addEventListener("visibilitychange", backup);
     return () => {
       alive.current = false;
       stopped = true;
       clearTimeout(retry);
       clearInterval(heartbeat);
       clearTimeout(timer.current);
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("pagehide", backup);
+      document.removeEventListener("visibilitychange", backup);
+      void draftWriter.current!.flush().catch(() => {});
       void call("release", {}).catch(() => {});
       setSharedMediaScope("");
       onSaveReady?.(null);
@@ -466,7 +574,7 @@ export default function SharedNotebook({
     window.addEventListener("synapse:cycle-theme", cycle, true);
     return () => window.removeEventListener("synapse:cycle-theme", cycle, true);
   });
-  if (!note)
+  if (!note || !draftReady)
     return (
       <div className="workspace-page">
         <button onClick={onBack}>
@@ -546,7 +654,21 @@ export default function SharedNotebook({
           field = (e.target as HTMLElement).closest<HTMLElement>("[data-cell]");
         if (object || field)
           void focusCell(
-            object ? "item/" + object.dataset.objectId : field!.dataset.cell!,
+            field?.dataset.cell?.endsWith("aiNotes")
+              ? field.dataset.cell
+              : object
+                ? (object.closest<HTMLElement>("[data-page-id]")?.dataset
+                    .pageId &&
+                  object.closest<HTMLElement>("[data-page-id]")?.dataset
+                    .pageId !== id
+                    ? "page/" +
+                      object.closest<HTMLElement>("[data-page-id]")!.dataset
+                        .pageId +
+                      "/"
+                    : "") +
+                  "item/" +
+                  object.dataset.objectId
+                : field!.dataset.cell!,
           );
       }}
       onPointerDownCapture={(e) => {
@@ -563,7 +685,22 @@ export default function SharedNotebook({
         const object = (e.target as HTMLElement).closest<HTMLElement>(
           "[data-object-id]",
         );
-        if (object) void focusCell("item/" + object.dataset.objectId);
+        const aiField = (e.target as HTMLElement).closest<HTMLElement>(
+          '[data-cell$="aiNotes"]',
+        );
+        if (aiField) {
+          void focusCell(aiField.dataset.cell!);
+          return;
+        }
+        if (object) {
+          const pageId =
+            object.closest<HTMLElement>("[data-page-id]")?.dataset.pageId;
+          void focusCell(
+            (pageId && pageId !== id ? "page/" + pageId + "/" : "") +
+              "item/" +
+              object.dataset.objectId,
+          );
+        }
       }}
     >
       {(snapshot?.lineage || parents).length > 0 && (
@@ -754,11 +891,19 @@ export default function SharedNotebook({
           <button
             onClick={() => {
               setRecoveredDraft(undefined);
+              void draftWriter
+                .current!.discard()
+                .catch((error) => setBackupError(error.message));
               localStorage.removeItem(draftKey);
             }}
           >
             Keep the saved version
           </button>
+        </div>
+      )}
+      {backupError && (
+        <div className="error-banner" role="alert">
+          {backupError}
         </div>
       )}
       {error && (
@@ -795,6 +940,7 @@ export default function SharedNotebook({
             onClick={async () => {
               pending.current.clear();
               uncertain.current = undefined;
+              await draftWriter.current!.discard();
               localStorage.removeItem(draftKey);
               adopt(await call("snapshot"));
               setError("");
@@ -876,44 +1022,90 @@ export default function SharedNotebook({
         </div>
       </details>
       {viewer ? (
-        <CanvasRead canvas={note.canvas || { items: [], height: 500 }}>
-          <MD text={bodyOf(note)} />
-        </CanvasRead>
+        <NotebookRead note={note} />
       ) : (
-        <NotebookSheet
+        <PagedNotebook
           ref={sheet}
-          value={note.canvas}
-          peers={others}
-          onChange={(canvas: NoteCanvas) =>
-            stage({ ...current.current!, canvas })
+          navigationStart={
+            <>
+              <button
+                className="icon"
+                aria-label="Back to notes"
+                title="Back to notes"
+                onClick={() =>
+                  void flush()
+                    .then(onBack)
+                    .catch((error) => notify(error.message))
+                }
+              >
+                <ArrowLeft size={16} />
+              </button>
+              {snapshot?.lineage?.at(-1) && onOpenNote && (
+                <button
+                  className="icon"
+                  aria-label="Open parent page"
+                  title={snapshot.lineage.at(-1)!.title}
+                  onClick={() =>
+                    void flush()
+                      .then(() => onOpenNote(snapshot.lineage!.at(-1)!.id))
+                      .catch((error) => notify(error.message))
+                  }
+                >
+                  <ArrowLeft size={16} style={{ transform: "rotate(90deg)" }} />
+                </button>
+              )}
+            </>
           }
-          onDrawing={() => {}}
+          saveStatus={status}
+          note={note}
+          save={flush}
+          requestAI={call}
+          peers={others}
+          onChange={(patch) => stage({ ...current.current!, ...patch })}
           onImage={() => document.getElementById("shared-upload")?.click()}
           onUpload={upload}
           onCommand={command}
+          supportedCommands={[
+            "page",
+            "link",
+            "flowchart",
+            "image",
+            "file",
+            "draw",
+          ]}
         >
-          <div data-cell="body">
-            <RichEditor
-              ref={bodyEditor}
-              value={bodyOf(note)}
-              readOnly={locked("body")}
-              onReady={(e) => {
-                lastEditor.current = e;
-              }}
-              onChange={(body) => edit("body", body)}
-              onCommand={command}
-              onUpload={upload}
-              onVideo={(src, title) => sheet.current?.video(src, title)}
-              onPlace={(kind, src, title) =>
-                kind === "image"
-                  ? sheet.current?.image(src, title || "Image")
-                  : kind === "drawing"
-                    ? sheet.current?.drawing(src)
-                    : sheet.current?.block(kind, src)
-              }
-            />
-          </div>
-        </NotebookSheet>
+          {(page, onBodyChange, prefix) => (
+            <div data-cell={prefix + "body"}>
+              <RichEditor
+                ref={bodyEditor}
+                value={page.body}
+                readOnly={locked(prefix + "body")}
+                onReady={(e) => {
+                  lastEditor.current = e;
+                }}
+                onChange={onBodyChange}
+                onCommand={command}
+                supportedCommands={[
+                  "page",
+                  "link",
+                  "flowchart",
+                  "image",
+                  "file",
+                  "draw",
+                ]}
+                onUpload={upload}
+                onVideo={(src, title) => sheet.current?.video(src, title)}
+                onPlace={(kind, src, title) =>
+                  kind === "image"
+                    ? sheet.current?.image(src, title || "Image")
+                    : kind === "drawing"
+                      ? sheet.current?.drawing(src)
+                      : sheet.current?.block(kind, src)
+                }
+              />
+            </div>
+          )}
+        </PagedNotebook>
       )}
       <input
         id="shared-upload"

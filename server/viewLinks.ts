@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import type { Note } from "../src/types.js";
 import { noteUsesResource } from "../src/resourceRefs.js";
+import { noteDrawingItems } from "../src/notebookModel.js";
 import { AppError, type Vault } from "./vault.js";
 export async function snapshot(vault: Vault, note: Note) {
   const files: Record<string, { type: string; data: string }> = {};
@@ -12,7 +13,7 @@ export async function snapshot(vault: Vault, note: Note) {
   ))
     refs.add(m[1] + "/" + m[2]);
   for (const id of note.drawings) refs.add("drawings/" + id + ".svg");
-  for (const item of note.canvas?.items || [])
+  for (const item of noteDrawingItems(note))
     if (item.drawingId) refs.add("drawings/" + item.drawingId + ".svg");
   const sources = (await vault.state()).sources.filter((s) =>
     noteUsesResource(note, s),

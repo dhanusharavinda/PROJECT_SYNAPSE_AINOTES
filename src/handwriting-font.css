@@ -1,0 +1,37 @@
+.handwriting-font-control {
+  font-size: 12px;
+  min-width: 0;
+  max-width: 320px;
+}
+.handwriting-font-control summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.handwriting-font-control summary:focus-visible {
+  outline: 2px solid var(--accent, #245344);
+  outline-offset: 3px;
+}
+.handwriting-font-options {
+  display: grid;
+  gap: 8px;
+  padding-block: 6px;
+}
+.handwriting-font-options p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.handwriting-font-options .handwriting-font-name {
+  font-family: var(--handwriting-font, "Segoe Print", "Bradley Hand", cursive);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.handwriting-font-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.handwriting-font-actions button {
+  font-size: 12px;
+}

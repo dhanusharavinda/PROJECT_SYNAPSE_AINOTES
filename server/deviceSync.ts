@@ -6,6 +6,11 @@ import { z } from "zod";
 import { Vault, AppError, atomic, noteSchema, uid } from "./vault.js";
 export class DeviceSync {
   onDiagram?: (body: unknown) => Promise<unknown>;
+  onNotebookAI?: (
+    id: string,
+    action: string,
+    body: unknown,
+  ) => Promise<unknown>;
   private generatingDiagram = false;
   records: {
     id: string;
@@ -89,7 +94,7 @@ export class DeviceSync {
       }
       next();
     });
-    app.use(express.json({ limit: "8mb" }));
+    app.use(express.json({ limit: "32mb" }));
     app.use("/api/device", this.router());
     app.use((_req, res) =>
       res.status(404).json({ error: "Only device sync is available here." }),
@@ -226,6 +231,16 @@ export class DeviceSync {
         throw new AppError(401, "Pair this device with the PC again.");
       next();
     });
+    for (const action of ["handwriting", "ink-diagram"])
+      router.post("/" + action, async (req, res) => {
+        const id = z.string().uuid().parse(req.body.id);
+        if (!this.onNotebookAI)
+          throw new AppError(
+            503,
+            "Update Synapse on the PC to convert notebook ink.",
+          );
+        res.json(await this.onNotebookAI(id, action, req.body));
+      });
     router.post("/diagram", async (req, res) => {
       if (!this.onDiagram)
         throw new AppError(503, "Update Synapse on the PC to create diagrams.");

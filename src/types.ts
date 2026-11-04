@@ -41,6 +41,29 @@ export interface NoteCanvas {
   height: number;
   width?: number;
 }
+export type PaperTexture = "plain" | "ruled" | "dotted" | "grid";
+export interface AINotes {
+  text: string;
+  sourceDigest: string;
+  generatedAt: string;
+  view: "typed" | "handwritten";
+  diagrams: {
+    id: string;
+    title: string;
+    description?: string;
+    original: NoteCanvas;
+    recognized?: NonNullable<Proposal["diagram"]>;
+    editable?: NoteCanvas;
+    mode: "original" | "editable";
+  }[];
+}
+export interface NotebookPage {
+  id: string;
+  body: string;
+  canvas: NoteCanvas;
+  paperTexture: PaperTexture;
+  aiNotes?: AINotes;
+}
 export interface Note {
   fileName?: string;
   id: string;
@@ -50,6 +73,10 @@ export interface Note {
   layers: Record<Layer, string>;
   body?: string;
   canvas?: NoteCanvas;
+  /** Additional sheets. The original body/canvas remain Page 1 for compatibility. */
+  pages?: NotebookPage[];
+  paperTexture?: PaperTexture;
+  aiNotes?: AINotes;
   parentId?: string | null;
   links: {
     target: string;

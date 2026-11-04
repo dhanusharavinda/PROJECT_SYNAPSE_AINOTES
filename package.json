@@ -4,7 +4,7 @@
   "description": "A local-first study notebook with an intentional knowledge graph.",
   "author": "Dhanusha Ravinda",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.10.1",
   "type": "module",
   "main": "desktop-dist/main.mjs",
   "scripts": {
@@ -81,6 +81,7 @@
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
+    "fake-indexeddb": "^6.2.7",
     "prettier": "^3.9.10",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",

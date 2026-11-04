@@ -5,6 +5,7 @@ import { MD, Busy } from "./ui";
 import type { Note, Layer } from "./types";
 import BrandMark from "./BrandMark";
 import CanvasRead from "./CanvasRead";
+import NotebookRead from "./NotebookRead";
 export default function Shared({ token }: { token: string }) {
   const [data, setData] = useState<any>();
   const [error, setError] = useState("");
@@ -41,14 +42,9 @@ export default function Shared({ token }: { token: string }) {
         Opening shared note...
       </div>
     );
-  const reading = () =>
-    data.note.canvas?.items.length > 0 ? (
-      <CanvasRead canvas={data.note.canvas} share={token}>
-        <MD text={body} share={token} />
-      </CanvasRead>
-    ) : (
-      <MD text={body} share={token} />
-    );
+  const reading = () => (
+    <NotebookRead note={{ ...data.note, body }} share={token} />
+  );
   return (
     <div className="share-shell">
       <header>

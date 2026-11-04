@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { diagramSchema } from "./diagramSchema.js";
+import { MAX_CANVAS_ITEMS } from "./notebookCapacity.js";
 export const linkSchema = z.object({
   target: z.string().uuid(),
   relation: z.enum(["related", "prerequisite", "used-in", "contrasts"]),
@@ -25,6 +27,99 @@ export const fileNameSchema = z
       !/[. ]\.md$/i.test(value),
     "Choose another filename.",
   );
+export const canvasSchema = z.object({
+  height: z.number().finite().min(0).max(100000),
+  prose: z
+    .object({
+      width: z.number().finite().min(80).max(100000),
+      height: z.number().finite().min(32).max(100000),
+    })
+    .optional(),
+  width: z.number().finite().min(100).max(100000).optional(),
+  items: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        kind: z.enum([
+          "text",
+          "table",
+          "image",
+          "video",
+          "drawing",
+          "paint",
+          "pen",
+          "arrow",
+          "rectangle",
+          "ellipse",
+          "diamond",
+          "triangle",
+          "line",
+        ]),
+        x: z.number().finite().min(0).max(100000),
+        y: z.number().finite().min(0).max(100000),
+        width: z.number().finite().min(1).max(100000),
+        height: z.number().finite().min(1).max(100000),
+        text: z.string().max(200000).optional(),
+        src: z.string().max(4000).optional(),
+        drawingId: z.string().uuid().optional(),
+        color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .optional(),
+        points: z
+          .array(z.tuple([z.number().finite(), z.number().finite()]))
+          .max(15000)
+          .optional(),
+        fitted: z.boolean().optional(),
+        strokeWidth: z.number().finite().min(0.5).max(50).optional(),
+        fill: z
+          .string()
+          .regex(/^(none|#[0-9a-fA-F]{6})$/)
+          .optional(),
+        opacity: z.number().min(0.1).max(1).optional(),
+        rotation: z.number().finite().min(-36000).max(36000).optional(),
+        arrowStyle: z
+          .enum(["straight", "curved", "elbow", "double"])
+          .optional(),
+        textScale: z.number().min(0.2).max(20).optional(),
+        uncertain: z.boolean().optional(),
+        pressures: z
+          .array(z.number().finite().min(0.7).max(1.3))
+          .max(15000)
+          .optional(),
+      }),
+    )
+    .max(MAX_CANVAS_ITEMS, "This sheet is full. Continue on a new sheet. Your existing writing has not been removed."),
+});
+
+export const paperTextureSchema = z.enum(["plain", "ruled", "dotted", "grid"]);
+export const aiNotesSchema = z.object({
+  text: z.string().max(200000),
+  sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  generatedAt: z.string().datetime(),
+  view: z.enum(["typed", "handwritten"]),
+  diagrams: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        title: z.string().max(160),
+        description: z.string().max(12000).optional(),
+        original: canvasSchema,
+        recognized: diagramSchema.optional(),
+        editable: canvasSchema.optional(),
+        mode: z.enum(["original", "editable"]),
+      }),
+    )
+    .max(20),
+});
+export const notebookPageSchema = z.object({
+  id: z.string().uuid(),
+  body: z.string().max(600000),
+  canvas: canvasSchema,
+  paperTexture: paperTextureSchema,
+  aiNotes: aiNotesSchema.optional(),
+});
+
 export const noteSchema = z.object({
   fileName: fileNameSchema.optional(),
   theme: z.enum(["light", "dark", "paper", "dotted"]).optional(),
@@ -49,71 +144,16 @@ export const noteSchema = z.object({
     }, "Choose a valid date.")
     .nullable()
     .optional(),
-  canvas: z
-    .object({
-      height: z.number().finite().min(0).max(100000),
-      prose: z
-        .object({
-          width: z.number().finite().min(80).max(100000),
-          height: z.number().finite().min(32).max(100000),
-        })
-        .optional(),
-      width: z.number().finite().min(100).max(100000).optional(),
-      items: z
-        .array(
-          z.object({
-            id: z.string().uuid(),
-            kind: z.enum([
-              "text",
-              "table",
-              "image",
-              "video",
-              "drawing",
-              "paint",
-              "pen",
-              "arrow",
-              "rectangle",
-              "ellipse",
-              "diamond",
-              "triangle",
-              "line",
-            ]),
-            x: z.number().finite().min(0).max(100000),
-            y: z.number().finite().min(0).max(100000),
-            width: z.number().finite().min(1).max(100000),
-            height: z.number().finite().min(1).max(100000),
-            text: z.string().max(200000).optional(),
-            src: z.string().max(4000).optional(),
-            drawingId: z.string().uuid().optional(),
-            color: z
-              .string()
-              .regex(/^#[0-9a-fA-F]{6}$/)
-              .optional(),
-            points: z
-              .array(z.tuple([z.number().finite(), z.number().finite()]))
-              .max(15000)
-              .optional(),
-            fitted: z.boolean().optional(),
-            strokeWidth: z.number().finite().min(0.5).max(50).optional(),
-            fill: z
-              .string()
-              .regex(/^(none|#[0-9a-fA-F]{6})$/)
-              .optional(),
-            opacity: z.number().min(0.1).max(1).optional(),
-            rotation: z.number().finite().min(-36000).max(36000).optional(),
-            arrowStyle: z
-              .enum(["straight", "curved", "elbow", "double"])
-              .optional(),
-            textScale: z.number().min(0.2).max(20).optional(),
-            uncertain: z.boolean().optional(),
-            pressures: z
-              .array(z.number().finite().min(0.7).max(1.3))
-              .max(15000)
-              .optional(),
-          }),
-        )
-        .max(1500),
-    })
+  canvas: canvasSchema.optional(),
+  paperTexture: paperTextureSchema.optional(),
+  aiNotes: aiNotesSchema.optional(),
+  pages: z
+    .array(notebookPageSchema)
+    .max(100)
+    .refine(
+      (pages) => new Set(pages.map((p) => p.id)).size === pages.length,
+      "Page identities must be unique.",
+    )
     .optional(),
   parentId: z.string().uuid().nullable().optional(),
   links: z.array(linkSchema).max(500),

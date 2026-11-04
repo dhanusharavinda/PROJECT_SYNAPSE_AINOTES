@@ -5,6 +5,7 @@ import path from "node:path";
 import request from "supertest";
 import { createApp } from "../server/app";
 import { DeviceSync } from "../server/deviceSync";
+import { prepareInput } from "../src/studyInput";
 import {
   newTabletNote,
   editRecord,
@@ -45,6 +46,52 @@ const device = (token: string, method: "get" | "post", url: string) =>
     [method]("/api/device/" + url)
     .set("Origin", origin)
     .set("Authorization", "Bearer " + token);
+it("saves study-pad typing and editable ink on the PC and safely retries a lost acknowledgement", async () => {
+  const { token } = await pair();
+  const original = await a.vault.write({
+    ...newTabletNote(),
+    title: "Study input",
+    body: "PC explanation",
+  });
+  const payload = prepareInput(original, {
+    text: "My recall notes",
+    strokes: [
+      {
+        id: crypto.randomUUID(),
+        kind: "pen",
+        x: 10,
+        y: 20,
+        width: 90,
+        height: 40,
+        points: [
+          [4, 4],
+          [80, 30],
+        ],
+        pressures: [0.8, 1.2],
+      },
+    ],
+  });
+  const first = (await device(token, "post", "note").send(payload).expect(200))
+    .body;
+  const retry = (await device(token, "post", "note").send(payload).expect(200))
+    .body;
+  expect(retry.note.revision).toBe(first.note.revision);
+  const saved = await a.vault.note(original.id);
+  expect(saved.body).toBe("PC explanation");
+  expect(
+    saved
+      .canvas!.items.filter((item) => item.kind === "text")
+      .map((item) => item.text),
+  ).toEqual(["My recall notes"]);
+  expect(
+    saved.canvas!.items.find((item) => item.kind === "pen")!.pressures,
+  ).toEqual([0.8, 1.2]);
+  expect(
+    (await device(token, "get", "notes").expect(200)).body.notes.find(
+      (note: any) => note.id === saved.id,
+    ).canvas,
+  ).toEqual(saved.canvas);
+});
 it("only accepts diagram requests from a paired device and does not mutate its note", async () => {
   let called = 0;
   a.devices.onDiagram = async (body) => {

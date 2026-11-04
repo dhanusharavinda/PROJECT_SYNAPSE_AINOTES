@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
+import "fake-indexeddb/auto";
 import { it, expect, vi } from "vitest";
 import {
   render,

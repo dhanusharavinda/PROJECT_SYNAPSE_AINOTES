@@ -3,6 +3,7 @@ import type { Note } from "./types";
 import { Modal, MD } from "./ui";
 import CanvasRead from "./CanvasRead";
 import { bodyOf } from "./content";
+import { notebookPages } from "./notebookModel";
 export default function SlidesExport({
   notes,
   onClose,
@@ -32,7 +33,17 @@ export default function SlidesExport({
       if (notes.length > 10)
         throw Error("Choose up to 10 notes for one slide document.");
       const { toJpeg } = await import("html-to-image");
-      for (const note of notes) {
+      const sheets = notes.flatMap((n) =>
+        notebookPages(n).map((p, index) => ({
+          ...n,
+          body: p.body,
+          canvas: p.canvas,
+          aiNotes: p.aiNotes,
+          pages: [],
+          title: n.title + (index ? ` · Page ${index + 1}` : ""),
+        })),
+      );
+      for (const note of sheets) {
         setFrame({ note, offset: 0, number: result.length + 1 });
         await settle();
         const height = capture.current!.querySelector<HTMLElement>(
@@ -127,7 +138,8 @@ export default function SlidesExport({
         </button>
         {slides.length > 0 && (
           <button className="primary" disabled={busy} onClick={download}>
-            Download PDF ({slides.length} {slides.length === 1 ? "slide" : "slides"})
+            Download PDF ({slides.length}{" "}
+            {slides.length === 1 ? "slide" : "slides"})
           </button>
         )}
       </div>
@@ -168,6 +180,22 @@ export default function SlidesExport({
                 >
                   <MD text={bodyOf(frame.note)} />
                 </CanvasRead>
+                {frame.note.aiNotes && (
+                  <section>
+                    <h3>AI notes</h3>
+                    <MD text={frame.note.aiNotes.text} />
+                    {frame.note.aiNotes.diagrams.map((d) => (
+                      <CanvasRead
+                        key={d.id}
+                        canvas={
+                          d.mode === "editable" && d.editable
+                            ? d.editable
+                            : d.original
+                        }
+                      />
+                    ))}
+                  </section>
+                )}
               </div>
             </div>
           </div>

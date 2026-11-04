@@ -379,7 +379,7 @@ it("never stores a web pairing credential in a Markdown attachment URL", () => {
     ),
   ).toBe('![Image](../attachments/image.png "synapse-width:320")');
 });
-it("keeps a context menu open while its own list scrolls", async () => {
+it("keeps a context menu open during scrolling until an outside tap", async () => {
   const { core, container } = await notebook();
   act(() => core.commands.setTextSelection({ from: 1, to: 4 }));
   fireEvent.contextMenu(container.querySelector(".editor-wrap")!, {
@@ -392,6 +392,10 @@ it("keeps a context menu open while its own list scrolls", async () => {
     screen.queryByRole("menu", { name: "Edit selected content" }),
   ).toBeTruthy();
   fireEvent.scroll(window);
+  expect(
+    screen.queryByRole("menu", { name: "Edit selected content" }),
+  ).toBeTruthy();
+  fireEvent.pointerDown(document.body);
   expect(
     screen.queryByRole("menu", { name: "Edit selected content" }),
   ).toBeNull();

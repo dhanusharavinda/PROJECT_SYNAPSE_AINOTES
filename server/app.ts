@@ -35,6 +35,8 @@ import { deliverHermes } from "./hermes.js";
 import { youtubeLink } from "../src/youtube.js";
 import { diagramSchema } from "./diagramSchema.js";
 import { createDiagramDraft, diagramSettings } from "./diagramDraft.js";
+import { convertHandwriting, recognizeInkDiagram } from "./handwriting.js";
+import { noteDrawingItems } from "../src/notebookModel.js";
 import { DeviceSync } from "./deviceSync.js";
 import { RelayHost } from "./relayHost.js";
 import QRCode from "qrcode";
@@ -79,6 +81,14 @@ export async function createApp(
   const collaboration = new Collaboration(vault);
   await collaboration.load();
   const accounts = new Accounts(vault, collaboration, relay);
+  const notebookAI = async (id: string, action: string, body: unknown) => {
+    const note = await vault.note(id);
+    return action === "handwriting"
+      ? convertHandwriting(providers, note, body)
+      : recognizeInkDiagram(providers, note, body);
+  };
+  accounts.onNotebookAI = notebookAI;
+  devices.onNotebookAI = notebookAI;
   await accounts.load();
   relay.onCollaboration = (client, input) => accounts.dispatch(client, input);
   const port = process.env.PORT || "4317";
@@ -146,7 +156,7 @@ export async function createApp(
     }
     next();
   });
-  app.use(express.json({ limit: "8mb" }));
+  app.use(express.json({ limit: "32mb" }));
   const owner = (
     req: express.Request,
     res: express.Response,
@@ -353,6 +363,12 @@ export async function createApp(
   api.post("/diagrams/draft", async (req, res) => {
     res.json(await draftDiagram(req.body));
   });
+  for (const action of ["handwriting", "ink-diagram"])
+    api.post("/notes/:id/" + action, async (req, res) => {
+      res.json(
+        await notebookAI(safeId(String(req.params.id)), action, req.body),
+      );
+    });
   api.get("/sources/:id/thumbnail", async (req, res) => {
     const state = await vault.state();
     const source = state.sources.find(
@@ -1536,7 +1552,7 @@ export async function createApp(
           s.sources.some((x) => n.sources.includes(x.id) && x.file === name)) ||
           (folder === "drawings" &&
             n.drawings.some((id) => name === id + ".svg")) ||
-          n.canvas?.items.some(
+          noteDrawingItems(n).some(
             (item) =>
               (folder === "drawings" &&
                 item.kind === "drawing" &&

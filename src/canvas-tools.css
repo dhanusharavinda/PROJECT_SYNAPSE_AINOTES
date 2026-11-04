@@ -168,6 +168,23 @@
 .synapse-wheel .wheel-action span {
   display: none;
 }
+.synapse-wheel .wheel-action[data-menu-caption] span {
+  display: block;
+  font-size: 10px;
+  line-height: 1;
+}
+.synapse-wheel .wheel-action .wheel-swatch {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.synapse-wheel .wheel-action[aria-pressed="true"] {
+  background: var(--green);
+  color: var(--surface);
+}
 .synapse-wheel .wheel-category.active,
 .synapse-wheel button:hover {
   background: var(--accent, #245344);
@@ -321,6 +338,16 @@
   }
 }
 /* Compact wheel, expand only while a category is open. */
+.synapse-wheel.context-menu.is-stylus {
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.synapse-wheel.is-stylus .wheel-category,
+.synapse-wheel.is-stylus .wheel-action {
+  min-width: 44px;
+  min-height: 44px;
+}
 .synapse-wheel.context-menu {
   width: 208px;
   height: 208px;

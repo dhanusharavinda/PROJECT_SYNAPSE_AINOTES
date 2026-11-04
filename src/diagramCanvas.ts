@@ -1,5 +1,6 @@
 import { diagramLayout, diagramTokens, type Diagram } from "./diagramDesign";
 import type { CanvasItem, NoteCanvas } from "./types";
+import { MAX_CANVAS_ITEMS } from "./notebookCapacity";
 // Portable editable objects can sync through the existing collaboration protocol.
 export function appendDiagram(
   canvas: NoteCanvas | undefined,
@@ -77,7 +78,7 @@ export function appendDiagram(
     text(left + 14, top + 12, node.width - 28, node.height - 24, node.label);
   }
   const height = y + layout.height * scale + 40;
-  if (items.length + base.items.length > 1500 || height > 100000)
+  if (items.length + base.items.length > MAX_CANVAS_ITEMS || height > 100000)
     throw new Error("This page is full. Insert the diagram on a new page.");
   return { ...base, height, items: [...base.items, ...items] };
 }

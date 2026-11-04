@@ -1,6 +1,8 @@
 import DiagramComposer from "./DiagramComposer";
+import { ArrowLeft, ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
+import PagedNotebook from "./PagedNotebook";
 import RichEditor from "./RichEditor";
 import {
   allPages,
@@ -27,6 +29,9 @@ import {
   type RelayAccess,
 } from "./relayProtocol";
 import QrScanner from "./QrScanner";
+import StudyWorkspace from "./StudyWorkspace";
+import type { InputSubmission } from "./studyInput";
+import { setViewMedia } from "./api";
 type Connection = {
   url: string;
   token: string;
@@ -35,7 +40,18 @@ type Connection = {
 };
 const mediaCache = "synapse-media-v1";
 class SyncError extends Error {}
-export default function TabletApp() {
+export default function TabletApp({ study = false }: { study?: boolean }) {
+  const studyMedia = useRef<Record<string, string>>({});
+  const [, refreshMedia] = useState(0);
+  useEffect(
+    () => () => {
+      Object.values(studyMedia.current).forEach((url) =>
+        URL.revokeObjectURL(url),
+      );
+      if (study) setViewMedia();
+    },
+    [study],
+  );
   const [pages, setPages] = useState<TabletRecord[]>([]),
     ref = useRef<TabletRecord[]>([]),
     tail = useRef(Promise.resolve()),
@@ -193,6 +209,10 @@ export default function TabletApp() {
   function update(records: TabletRecord[]) {
     ref.current = records;
     setPages(records);
+    if (study)
+      setSelected(
+        (id) => id || records.find((p) => !p.note.archived)?.note.id || "",
+      );
   }
   function persist(record: TabletRecord, oldId?: string) {
     const write = tail.current
@@ -228,7 +248,7 @@ export default function TabletApp() {
     document.documentElement.dataset.theme =
       localStorage.getItem("synapse-tablet-theme") || "dotted";
     document.body.classList.add("tablet-mode");
-    if (import.meta.env.PROD && "serviceWorker" in navigator)
+    if (!study && import.meta.env.PROD && "serviceWorker" in navigator)
       void navigator.serviceWorker
         .register("/sw.js", { scope: "/tablet/" })
         .then(() => navigator.serviceWorker.ready)
@@ -306,13 +326,25 @@ export default function TabletApp() {
         Authorization: "Bearer " + c.token,
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(path === "diagram" ? 190000 : 12000),
+      signal: AbortSignal.timeout(
+        ["diagram", "handwriting", "ink-diagram"].includes(path)
+          ? 250000
+          : 12000,
+      ),
     });
     const data = await r.json();
     if (!r.ok) throw new SyncError(data.error || "Connection failed");
     return data;
   }
   async function cacheAsset(asset: TabletAsset) {
+    if (study) {
+      const path = "/files/" + asset.name;
+      const previous = studyMedia.current[path];
+      studyMedia.current[path] = URL.createObjectURL(asset.blob);
+      setViewMedia({ ...studyMedia.current });
+      refreshMedia((version) => version + 1);
+      if (previous) URL.revokeObjectURL(previous);
+    }
     const ext = asset.name.split(".").pop()!;
     const type =
       (
@@ -729,6 +761,35 @@ export default function TabletApp() {
     }
     setError("Use Windows for AI and note-link commands.");
   }
+  async function sendInput(input: InputSubmission) {
+    if (!writer || !connection.current || !navigator.onLine)
+      throw Error("Your PC is not connected.");
+    if (syncing.current) throw Error("Sync is finishing. Retry in a moment.");
+    if (ref.current.some((p) => p.note.id === input.note.id && p.dirty))
+      throw Error("This page has earlier changes waiting to sync.");
+    syncing.current = true;
+    try {
+      await tail.current;
+      const result = await remote("note", input);
+      const next: TabletRecord = {
+        note: result.note,
+        base: result.note.etag || null,
+        dirty: false,
+        version: 1,
+        operation: crypto.randomUUID(),
+      };
+      await persist(next);
+      update([...ref.current.filter((p) => p.note.id !== next.note.id), next]);
+      revision.current = "";
+      if (result.conflict)
+        setError(
+          "Your PC page changed while you were writing. Your input was saved in a separate conflict copy, and the original page is preserved.",
+        );
+      setStatus("Saved on your PC");
+    } finally {
+      syncing.current = false;
+    }
+  }
   const row = pages.find((p) => p.note.id === selected && !p.note.archived);
   return (
     <main className={`tablet-app${writer ? "" : " tablet-readonly"}`}>
@@ -744,9 +805,11 @@ export default function TabletApp() {
         <button onClick={() => setSettings(!settings)} aria-expanded={settings}>
           Connect & backup
         </button>
-        <button onClick={() => setFinger(!finger)} aria-pressed={finger}>
-          {finger ? "Finger ink" : "Pencil ink"}
-        </button>
+        {!study && (
+          <button onClick={() => setFinger(!finger)} aria-pressed={finger}>
+            {finger ? "Finger ink" : "Pencil ink"}
+          </button>
+        )}
       </header>
       {error && (
         <div className="tablet-error" role="alert">
@@ -758,8 +821,14 @@ export default function TabletApp() {
         <section className="tablet-settings">
           <h2>Your notebook, connected.</h2>
           <p>
-            Pages save here first. While open, this app syncs about every two
-            seconds when your PC is reachable.
+            {study ? (
+              "Open this website in Safari. Pair once, choose a page, then use the writing pad to send typed notes and Pencil strokes to your PC."
+            ) : (
+              <>
+                Pages save here first. While open, this app syncs about every
+                two seconds when your PC is reachable.
+              </>
+            )}
           </p>
           <p>
             On your PC, open Settings → Pair device. Scan its QR code here, then
@@ -851,13 +920,15 @@ export default function TabletApp() {
           <button disabled={busy} onClick={() => restore.current?.click()}>
             Import backup
           </button>
-          <p>
-            {offlineReady
-              ? "Ready to reopen offline."
-              : "Keep this page online until offline installation finishes."}{" "}
-            On iPad, use Safari → Share → Add to Home Screen. On Android, use
-            Chrome → menu → Install app.
-          </p>
+          {!study && (
+            <p>
+              {offlineReady
+                ? "Ready to reopen offline."
+                : "Keep this page online until offline installation finishes."}{" "}
+              On iPad, use Safari → Share → Add to Home Screen. On Android, use
+              Chrome → menu → Install app.
+            </p>
+          )}
           <p>
             Keep backups before clearing browser data. Your PC must be on and
             both devices need internet for QR sync. Offline writing and drawing
@@ -901,7 +972,21 @@ export default function TabletApp() {
             </button>
           ))}
       </nav>
-      {row ? (
+      {row && study ? (
+        <StudyWorkspace
+          key={row.note.id}
+          note={row.note}
+          queued={row.dirty}
+          canSend={
+            ready &&
+            writer &&
+            Boolean(connection.current) &&
+            navigator.onLine &&
+            !row.dirty
+          }
+          onSend={sendInput}
+        />
+      ) : row ? (
         <section className="tablet-note">
           {diagramSelection !== null && (
             <DiagramComposer
@@ -927,34 +1012,78 @@ export default function TabletApp() {
             onChange={(e) => edit({ title: e.target.value || "Untitled page" })}
           />
           <div className={finger ? "tablet-finger" : "tablet-pencil"}>
-            <NotebookSheet
+            <PagedNotebook
               ref={sheet}
+              navigationStart={
+                <div className="sheet-focus-navigation">
+                  <button aria-label="Back to all notes" title="All notes" onClick={() => {
+                    sheet.current?.flush();
+                    void tail.current.then(() => setSelected("")).catch((e) => setError((e as Error).message));
+                  }}><ArrowLeft size={17} /></button>
+                  {row.note.parentId && pages.some((p) => p.note.id === row.note.parentId) && <button aria-label="Open parent note" title="Parent note" onClick={() => {
+                    sheet.current?.flush();
+                    void tail.current.then(() => setSelected(row.note.parentId!)).catch((e) => setError((e as Error).message));
+                  }}><ArrowUp size={17} /></button>}
+                  <span className="sheet-focus-title" title={row.note.title}>{row.note.title}</span>
+                </div>
+              }
+              saveStatus={status}
               key={row.note.id}
-              value={row.note.canvas}
-              onChange={(canvas) => edit({ canvas })}
-              onDrawing={() =>
-                setError(
-                  "Embedded diagrams can be viewed here. Edit their shapes in the Windows workspace.",
-                )
+              note={row.note}
+              onChange={edit}
+              save={async () => {
+                await tail.current;
+                await sync();
+                if (ref.current.find((p) => p.note.id === row.note.id)?.dirty)
+                  throw Error(
+                    "Connect to your PC and finish syncing this sheet before conversion.",
+                  );
+              }}
+              requestAI={(action, body) =>
+                remote(action, { ...(body as object), id: row.note.id })
               }
               onImage={() => upload.current?.click()}
               onUpload={(file) => void attach(file)}
               onCommand={command}
+              supportedCommands={
+                writer && connection.current
+                  ? ["flowchart", "image"]
+                  : writer
+                    ? ["image"]
+                    : []
+              }
             >
-              <RichEditor
-                value={row.note.body || ""}
-                onChange={(body) => edit({ body })}
-                onCommand={command}
-              />
-            </NotebookSheet>
+              {(page, onBodyChange) => (
+                <RichEditor
+                  value={page.body}
+                  onChange={onBodyChange}
+                  onCommand={command}
+                  supportedCommands={
+                    writer && connection.current
+                      ? ["flowchart", "image"]
+                      : writer
+                        ? ["image"]
+                        : []
+                  }
+                />
+              )}
+            </PagedNotebook>
           </div>
         </section>
       ) : (
         <section className="tablet-empty">
-          <h1>A page for your next idea.</h1>
+          <h1>
+            {study ? "Your PC notebook, here." : "A page for your next idea."}
+          </h1>
           <p>
-            Write, sketch and keep going offline. Connect Windows when you want
-            everything together.
+            {study ? (
+              "Connect your PC above to read your pages. Use the writing pad to send typing and Pencil input."
+            ) : (
+              <>
+                Write, sketch and keep going offline. Connect Windows when you
+                want everything together.
+              </>
+            )}
           </p>
           <button
             onClick={() => void create().catch(fail)}
@@ -962,11 +1091,13 @@ export default function TabletApp() {
           >
             Create first page
           </button>
-          <p className="tablet-install">
-            {offlineReady
-              ? "Offline notebook ready. Add Synapse to your Home Screen."
-              : "Preparing offline notebook…"}
-          </p>
+          {!study && (
+            <p className="tablet-install">
+              {offlineReady
+                ? "Offline notebook ready. Add Synapse to your Home Screen."
+                : "Preparing offline notebook…"}
+            </p>
+          )}
         </section>
       )}
     </main>

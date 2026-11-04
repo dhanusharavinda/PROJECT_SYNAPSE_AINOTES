@@ -127,7 +127,22 @@ export function plainNote(note: Note) {
       (note.canvas?.items
         .filter((item) => item.kind === "text" || item.kind === "table")
         .map((item) => "\n\n" + (item.text || ""))
-        .join("") || ""),
+        .join("") || "") +
+      "\n\n" +
+      (note.aiNotes?.text || "") +
+      (note.pages || [])
+        .map(
+          (page) =>
+            "\n\n" +
+            page.body +
+            "\n\n" +
+            (page.aiNotes?.text || "") +
+            page.canvas.items
+              .filter((item) => item.kind === "text" || item.kind === "table")
+              .map((item) => "\n\n" + (item.text || ""))
+              .join(""),
+        )
+        .join(""),
   );
 }
 export function inlineTargets(body: string) {

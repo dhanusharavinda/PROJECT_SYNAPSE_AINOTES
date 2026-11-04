@@ -1,0 +1,373 @@
+.paged-notebook {
+  position: relative;
+}
+.paper-navigation {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 46px;
+  flex: 0 0 auto;
+  position: relative;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  z-index: 5;
+}
+.paper-capacity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding-inline: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.paper-capacity button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--ink);
+  padding: 6px 0;
+  min-height: 32px;
+}
+.sheet-focus-navigation {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+.sheet-focus-title {
+  font-size: 12px;
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-inline: 4px 10px;
+}
+@media (pointer: fine) {
+  .canvas-focus .paper-navigation {
+    min-height: 36px;
+  }
+  .canvas-focus .paper-navigation > button,
+  .canvas-focus .paper-corner-controls > button {
+    min-height: 36px;
+    height: 36px;
+  }
+  .canvas-focus .paper-swatch {
+    height: 24px;
+    width: 20px;
+  }
+  .canvas-focus .paper-page-picker select {
+    padding-block: 4px;
+  }
+  .canvas-focus .paper-navigation .paper-turn-corner {
+    height: 36px;
+    width: 36px;
+  }
+}
+@media (max-width: 600px) {
+  .sheet-focus-title {
+    display: none;
+  }
+  .paper-capacity {
+    font-size: 11px;
+    gap: 0 4px;
+    padding-inline: 2px;
+  }
+  .paper-capacity span {
+    max-width: 115px;
+  }
+  .paper-texture-button svg {
+    display: none;
+  }
+}
+.paper-navigation > button,
+.paper-corner-controls > button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+.paper-page-picker select {
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  padding: 8px 2px;
+  max-width: 145px;
+}
+.paper-navigation .paper-page-picker {
+  margin: 0;
+}
+.paged-notebook .canvas-focus > .sheet-toolbar {
+  margin: 0;
+}
+.paper-corner-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.paper-texture-button {
+  gap: 4px;
+  grid-auto-flow: column;
+}
+.paper-swatch {
+  display: inline-block;
+  width: 24px;
+  height: 30px;
+  border: 1px solid #b9c2b7;
+  background-color: #fffef8;
+  border-radius: 2px;
+}
+.texture-ruled {
+  background-image: repeating-linear-gradient(
+    transparent 0 6px,
+    #d5ddd0 6px 7px
+  );
+}
+.texture-dotted {
+  background-image: radial-gradient(#acb7a5 0.8px, transparent 0.8px);
+  background-size: 5px 5px;
+}
+.texture-grid {
+  background-image:
+    linear-gradient(#d5ddd0 1px, transparent 1px),
+    linear-gradient(90deg, #d5ddd0 1px, transparent 1px);
+  background-size: 6px 6px;
+}
+.paper-navigation .paper-turn-corner {
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    #e0e6d9 51%,
+    #f7f8ef 78%
+  );
+  border-radius: 0 0 0 8px;
+  cursor: pointer;
+  touch-action: none;
+}
+.paper-turn-corner:hover {
+  filter: brightness(0.96);
+}
+.paper-texture-menu {
+  position: absolute;
+  right: 12px;
+  top: 48px;
+  display: flex;
+  padding: 8px;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px #24392f20;
+  z-index: 30;
+}
+.paper-texture-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 60px;
+  font-size: 12px;
+}
+.paper-texture-menu button[aria-pressed="true"],
+.ai-note-views [aria-pressed="true"] {
+  background: var(--sage, #dfe8d8);
+  color: #24392f;
+}
+.paged-notebook .notebook-sheet-content,
+.paper-snapshot {
+  background-color: #fffef8;
+  color: #24392f;
+  --ink: #24392f;
+  --surface: #fffef8;
+  --text: #24392f;
+  --muted: #5d6b5e;
+}
+.paged-notebook [data-paper-texture="plain"] .notebook-sheet-content {
+  background-image: none;
+}
+.paged-notebook [data-paper-texture="ruled"] .notebook-sheet-content,
+.paper-snapshot[data-paper-texture="ruled"] {
+  background-image: repeating-linear-gradient(
+    transparent 0 31px,
+    #dce3d6 31px 32px
+  );
+}
+.paged-notebook [data-paper-texture="dotted"] .notebook-sheet-content,
+.paper-snapshot[data-paper-texture="dotted"] {
+  background-image: radial-gradient(#b7c3b0 0.8px, transparent 0.8px);
+  background-size: 20px 20px;
+}
+.paged-notebook [data-paper-texture="grid"] .notebook-sheet-content,
+.paper-snapshot[data-paper-texture="grid"] {
+  background-image:
+    linear-gradient(#dfe5d9 1px, transparent 1px),
+    linear-gradient(90deg, #dfe5d9 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.paper-after {
+  position: sticky;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 24px 48px;
+  background: var(--surface);
+  touch-action: pan-y;
+}
+.paper-end-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 24px 0;
+}
+.paper-end-actions button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.ai-notes-panel {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+.ai-notes-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 0;
+}
+.ai-notes-heading > button:last-child {
+  margin-left: auto;
+}
+.ai-notes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  font-weight: 600;
+}
+.ai-notes-stale {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-notes-disclosure {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 65ch;
+}
+.ai-draft-actions,
+.ai-note-views,
+.ai-diagram-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.ai-note-text {
+  background: #fffef8;
+  color: #24392f;
+  padding: 20px;
+  min-height: 120px;
+  border-radius: 4px;
+}
+.ai-handwriting .tiptap {
+  font-family: var(
+    --handwriting-font,
+    "Segoe Print",
+    "Bradley Hand",
+    "Comic Sans MS",
+    cursive
+  );
+  line-height: 1.9;
+}
+.ai-diagram {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.ai-diagram .reading-sheet {
+  max-width: 900px;
+}
+.ai-edge-review {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.ai-edge-review input,
+.ai-edge-review select {
+  min-width: 0;
+  flex: 1;
+}
+.paper-snapshot {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.notebook-reading-page {
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+.reading-page-number {
+  font-size: 12px;
+  color: var(--muted);
+}
+.notebook-reading-page .ai-handwriting {
+  font-family: var(
+    --handwriting-font,
+    "Segoe Print",
+    "Bradley Hand",
+    "Comic Sans MS",
+    cursive
+  );
+  line-height: 1.9;
+}
+.page-turn-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+}
+.page-turn-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 600px) {
+  .paper-after {
+    padding-inline: 12px;
+  }
+  .ai-notes-heading {
+    gap: 8px;
+  }
+  .ai-notes-heading > button:last-child {
+    font-size: 12px;
+  }
+  .paper-texture-menu {
+    right: 0;
+  }
+  .ai-note-text {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .paper-turn-corner {
+    transition: none;
+  }
+}

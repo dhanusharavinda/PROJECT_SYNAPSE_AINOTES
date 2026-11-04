@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
+import "fake-indexeddb/auto";
+import { readNoteDraft } from "../src/noteDrafts";
 import { it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
@@ -123,7 +125,6 @@ it("creates a page from the shared slash-command handler and opens it in the app
   ).toBe(true);
 });
 it("releases a focused field after editing becomes idle", async () => {
-  vi.useFakeTimers();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   mock.call.mockImplementationOnce(async () => ({
     note: structuredClone(note),
@@ -142,12 +143,18 @@ it("releases a focused field after editing becomes idle", async () => {
       />,
     );
   });
-  const body = screen.getByLabelText("Body");
+  const body = await screen.findByLabelText("Body");
+  vi.useFakeTimers({ toFake: ["Date"] });
   await act(async () => fireEvent.focus(body));
-  await act(async () => vi.advanceTimersByTime(4000));
-  expect(mock.call).toHaveBeenCalledWith("/collaboration/remote/test/release", {
-    cell: "body",
-  });
+  vi.setSystemTime(Date.now() + 4000);
+  await waitFor(
+    () =>
+      expect(mock.call).toHaveBeenCalledWith(
+        "/collaboration/remote/test/release",
+        { cell: "body" },
+      ),
+    { timeout: 1500 },
+  );
 });
 it("applies an incoming live update while preserving a pending local text draft", async () => {
   const original = mock.call.getMockImplementation()!;
@@ -187,6 +194,55 @@ it("applies an incoming live update while preserving a pending local text draft"
     ).toBe("Remote title"),
   );
   expect((body as HTMLTextAreaElement).value).toBe("Local draft");
+});
+it("preserves local text already sending when a live snapshot arrives before acknowledgement", async () => {
+  const original = mock.call.getMockImplementation()!;
+  let deliver!: (value: any) => void;
+  let release!: (value: any) => void;
+  mock.call.mockImplementation((path: string, body: any) => {
+    if (path.endsWith("/watch"))
+      return new Promise((resolve) => {
+        deliver = resolve;
+      });
+    if (path.endsWith("/acquire"))
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    return original(path, body);
+  });
+  render(
+    <SharedNotebook
+      id={note.id}
+      connection="test"
+      notify={() => {}}
+      onBack={() => {}}
+    />,
+  );
+  const body = await screen.findByLabelText("Body");
+  fireEvent.change(body, { target: { value: "Text currently sending" } });
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  await act(async () =>
+    deliver({
+      cursor: 1,
+      snapshot: {
+        note: { ...note, title: "Live remote title" },
+        role: "editor",
+        presence: [],
+        cells: {
+          body: { value: note.body, hash: base },
+          title: { value: "Live remote title", hash: base },
+        },
+      },
+    }),
+  );
+  expect((body as HTMLTextAreaElement).value).toBe("Text currently sending");
+  expect(
+    (screen.getByLabelText("Shared page title") as HTMLInputElement).value,
+  ).toBe("Live remote title");
+  await act(async () =>
+    release({ session: "me", hash: base, value: note.body }),
+  );
+  await waitFor(() => expect(note.body).toBe("Text currently sending"));
 });
 it("waits and automatically retries a busy editor lock without showing a destructive recovery panel", async () => {
   const original = mock.call.getMockImplementation()!;
@@ -248,12 +304,12 @@ it("autosaves a shared text edit and clears its recovered-draft record only afte
   );
   const body = await screen.findByLabelText("Body");
   fireEvent.change(body, { target: { value: "My explanation" } });
-  expect(localStorage.getItem("synapse-shared-draft:" + note.id)).toContain(
-    "My explanation",
-  );
+  expect(localStorage.getItem("synapse-shared-draft:" + note.id)).toBeNull();
   await waitFor(() => expect(changeCalls).toHaveLength(1), { timeout: 3000 });
-  await waitFor(() =>
-    expect(localStorage.getItem("synapse-shared-draft:" + note.id)).toBeNull(),
+  await waitFor(async () =>
+    expect(
+      await readNoteDraft("synapse-shared-draft:" + note.id),
+    ).toBeUndefined(),
   );
   expect(note.body).toBe("My explanation");
   expect(screen.getByRole("status").textContent).toContain("Saved");
@@ -271,9 +327,13 @@ it("preserves a local draft when another writer changed the field first", async 
   fireEvent.change(body, { target: { value: "Keep my draft" } });
   base = "b".repeat(64);
   note.body = "Someone else's explanation";
-  await screen.findByRole("alert", {}, { timeout: 3000 });
+  await screen.findByText(
+    /This part changed while you were editing/,
+    {},
+    { timeout: 3000 },
+  );
   expect(changeCalls).toHaveLength(0);
-  expect(localStorage.getItem("synapse-shared-draft:" + note.id)).toContain(
+  expect((await readNoteDraft("synapse-shared-draft:" + note.id))?.body).toBe(
     "Keep my draft",
   );
   expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe(

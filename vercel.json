@@ -3,6 +3,9 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/study/", "destination": "/index.html" },
+    { "source": "/study/:path*", "destination": "/index.html" },
+    { "source": "/study", "destination": "/index.html" },
     { "source": "/view/:path*", "destination": "/index.html" },
     {
       "source": "/signin/",

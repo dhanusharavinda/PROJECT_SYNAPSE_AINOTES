@@ -8,7 +8,11 @@ Version 1.1 adds a full-width notebook sheet, direct pen and arrow tools, movabl
 
 The Windows app is the main Synapse product. It runs the notebook service inside the app and keeps the vault in a separate folder, normally `Documents\Synapse`. The optional Vercel companion can still connect to a running local service, but it is not required for ordinary use. The vault is never packaged into the installer.
 
+Version 1.10 adds multiple extendable sheets within one note, paper textures, page turning, and reviewed AI notes beneath the original ink. Use the installed Windows app on an iPad through spacedesk, with the PC keyboard for typing and the iPad stylus for drawing. This workflow uses the Windows app directly. See [Paged notebook and AI notes](docs/PAGED_NOTEBOOK.md).
+
 ## iPad and Android notebook
+
+Use `/study/` in Safari for a read-only view of PC notes with a separate typed and Pencil writing pad. **Send to PC** adds the input to the note using the existing private pairing connection. No Home Screen installation is required. Keep Windows Synapse open while sending. See [Tablet installation and sync](docs/TABLET_APP.md).
 
 Version 1.4 adds an installable PWA at `/tablet/`: offline writing and drawing, local backups, and paired private sync with Windows. See [Tablet installation and sync](docs/TABLET_APP.md).
 

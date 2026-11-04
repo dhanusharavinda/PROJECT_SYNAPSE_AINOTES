@@ -3,6 +3,12 @@ import crypto from "node:crypto";
 import { AppError, atomic, Vault, safeId } from "./vault.js";
 import { noteSchema } from "../src/noteSchema.js";
 import type { Note, CanvasItem } from "../src/types.js";
+import {
+  isNotebookExtraCell,
+  notebookExtraValue,
+  extraNotebookCells,
+  applyNotebookExtra,
+} from "../src/notebookModel.js";
 export type MemberRole = "viewer" | "editor";
 export type Principal = {
   session: string;
@@ -19,6 +25,7 @@ export type Presence = {
   head?: number;
   color: string;
   expires: number;
+  localOwner?: boolean;
 };
 export type Membership = {
   files?: string[];
@@ -32,6 +39,7 @@ const cellHash = (value: unknown) =>
     .update(JSON.stringify(value ?? null))
     .digest("hex");
 export function cellValue(note: Note, cell: string): unknown {
+  if (isNotebookExtraCell(cell)) return notebookExtraValue(note, cell);
   if (["title", "body", "context", "group", "theme", "fileName"].includes(cell))
     return (note as any)[cell] ?? null;
   if (cell === "canvasSize")
@@ -54,6 +62,7 @@ export function noteCells(note: Note) {
       "group",
       "theme",
       "canvasSize",
+      ...extraNotebookCells(note),
       ...(note.canvas?.items || []).map((i) => "item/" + i.id),
     ].map((cell) => [
       cell,
@@ -193,13 +202,7 @@ export class Collaboration {
       }
       return false;
     });
-    const initialText = [
-      ...subtree.flatMap((n) => [
-        n.body || "",
-        ...Object.values(n.layers),
-        ...(n.canvas?.items.map((i) => i.src || "") || []),
-      ]),
-    ].join("\n");
+    const initialText = JSON.stringify(subtree);
     const initialFiles = [
       ...new Set(
         [
@@ -330,6 +333,7 @@ export class Collaboration {
       name: p.name.slice(0, 60) || p.email.split("@")[0],
       cell,
       ...selection,
+      localOwner: p.localOwner === true,
       color,
       expires: Date.now() + 15000,
     });
@@ -418,7 +422,13 @@ export class Collaboration {
             409,
             "This part changed elsewhere. Keep your draft and reload it.",
           );
-        if (change.cell.startsWith("item/")) {
+        if (isNotebookExtraCell(change.cell)) {
+          try {
+            next = applyNotebookExtra(next, change.cell, change.value);
+          } catch (error) {
+            throw new AppError(400, (error as Error).message);
+          }
+        } else if (change.cell.startsWith("item/")) {
           const itemId = safeId(change.cell.slice(5)),
             canvas = next.canvas || { width: 1100, height: 500, items: [] };
           if (

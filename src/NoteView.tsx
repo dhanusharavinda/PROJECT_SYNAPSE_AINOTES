@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
+  ArrowLeft,
+  ArrowUp,
   ArrowUpRight,
   Link2,
   Plus,
@@ -30,9 +32,12 @@ import { fileNameSchema } from "./noteSchema";
 import { bodyOf, lineage } from "./content";
 import DiagramPreview from "./DiagramPreview";
 import NotebookSheet, { type SheetHandle } from "./NotebookSheet";
+import PagedNotebook from "./PagedNotebook";
 import SlidesExport from "./SlidesExport";
 import PageHistory from "./PageHistory";
 import { noteUsesResource } from "./resourceRefs";
+import { NoteDraftWriter } from "./noteDrafts";
+import { assertNoteFits } from "./notebookCapacity";
 const Drawing = lazy(() => import("./Drawing"));
 const layers: Layer[] = ["intuition", "technical", "implementation"];
 export default function NoteView({
@@ -88,6 +93,18 @@ export default function NoteView({
   const saving = useRef(false);
   const inFlight = useRef<Promise<Note> | null>(null);
   const [saveStatus, setSaveStatus] = useState("Saved locally");
+  const [draftReady, setDraftReady] = useState(false);
+  const [backupError, setBackupError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const retryAfter = useRef(0);
+  const retryBlocked = useRef(false);
+  const retryCount = useRef(0);
+  const draftWriter = useRef<NoteDraftWriter | null>(null);
+  if (!draftWriter.current)
+    draftWriter.current = new NoteDraftWriter(
+      "owner:" + data.config.vaultPath + ":" + note.id,
+      (error) => setBackupError(error.message),
+    );
   const [intro, setIntro] = useState(false);
   useEffect(() => {
     const key = "synapse-new-note:" + note.id;
@@ -138,6 +155,43 @@ export default function NoteView({
   const [shareLabel, setShareLabel] = useState("");
   const [conflict, setConflict] = useState<Note>();
   useEffect(() => {
+    let mounted = true;
+    const writer = draftWriter.current!;
+    void writer.read().then((recovered) => {
+      if (!mounted || !recovered) return;
+      const saved = latest.current;
+      const content = ({ revision, etag, updated, ...rest }: Note) => JSON.stringify(rest);
+      if (content(recovered) === content(latest.current)) {
+        void writer.discard().catch(() => {});
+        return;
+      }
+      latest.current = { ...recovered, body: bodyOf(recovered) };
+      setDraft(latest.current);
+      dirty.current = true;
+      onDirty(true);
+      writer.stage(latest.current);
+      if (recovered.etag === saved.etag && recovered.revision === saved.revision) {
+        setSaveStatus("Recovered draft. Saving...");
+      } else {
+        retryBlocked.current = true;
+        setConflict(saved);
+        setModal("conflict");
+        setSaveStatus("Recovered draft needs review");
+      }
+    }).catch((error) => {
+      if (mounted) setBackupError(error.message);
+    }).finally(() => { if (mounted) setDraftReady(true); });
+    const backup = () => { void writer.flush().catch(error => setBackupError(error.message)); };
+    window.addEventListener("pagehide", backup);
+    document.addEventListener("visibilitychange", backup);
+    return () => {
+      mounted = false;
+      window.removeEventListener("pagehide", backup);
+      document.removeEventListener("visibilitychange", backup);
+      void writer.flush().catch(() => {});
+    };
+  }, []);
+  useEffect(() => {
     if (
       note.id !== latest.current.id ||
       (!dirty.current &&
@@ -166,13 +220,17 @@ export default function NoteView({
     latest.current = n;
     setDraft(n);
     dirty.current = true;
+    draftWriter.current!.stage(n);
+    if (!conflict) retryBlocked.current = false;
+    retryAfter.current = 0;
     onDirty(true);
     setSaveStatus("Unsaved changes");
   }
-  async function save(): Promise<Note> {
+  async function save(flushInput = true): Promise<Note> {
+    if (flushInput) sheetRef.current?.flush();
     if (inFlight.current) {
       await inFlight.current;
-      return dirty.current ? save() : latest.current;
+      return dirty.current ? save(false) : latest.current;
     }
     if (!dirty.current) return latest.current;
     const task = persist();
@@ -182,14 +240,21 @@ export default function NoteView({
     } finally {
       inFlight.current = null;
     }
-    return dirty.current ? save() : latest.current;
+    return dirty.current ? save(false) : latest.current;
   }
   async function persist() {
     saving.current = true;
     const snapshot = latest.current;
     setSaveStatus("Saving...");
     try {
+      await draftWriter.current!.flush().then(() => setBackupError(""), error => setBackupError(error.message));
+      assertNoteFits(snapshot);
       const saved = await api<Note>("/notes/" + snapshot.id, snapshot, "PUT");
+      retryBlocked.current = false;
+      setSaveError("");
+      retryCount.current = 0;
+      retryAfter.current = 0;
+      void draftWriter.current!.acknowledge(snapshot).catch(error => setBackupError(error.message));
       if (latest.current === snapshot) {
         latest.current = { ...saved, body: bodyOf(saved) };
         setDraft(latest.current);
@@ -202,13 +267,20 @@ export default function NoteView({
           revision: saved.revision,
           etag: saved.etag,
         };
+        draftWriter.current!.stage(latest.current);
         setDraft(latest.current);
         setSaveStatus("Unsaved changes");
       }
       void refresh();
       return saved;
     } catch (e) {
-      setSaveStatus("Save failed. Draft preserved.");
+      const status = (e as { status?: number }).status;
+      retryBlocked.current = !!status && status < 500 && ![408, 423, 429].includes(status);
+      retryAfter.current = Date.now() + Math.min(30000, 1500 * 2 ** retryCount.current++);
+      setSaveStatus(draftWriter.current!.hasStored(latest.current)
+        ? "Save pending. Draft kept on this device."
+        : "Save pending. Keep this page open.");
+      setSaveError((e as Error).message);
       if ((e as Error).message.includes("changed elsewhere")) {
         try {
           setConflict(await api<Note>("/notes/" + snapshot.id));
@@ -221,19 +293,32 @@ export default function NoteView({
     }
   }
   useEffect(() => {
-    if (!dirty.current || saveStatus.startsWith("Save failed")) return;
+    if (!draftReady || !dirty.current || retryBlocked.current) return;
     const timer = setTimeout(() => {
-      if (!saving.current) save().catch((e) => notify(e.message));
-    }, 1400);
+      if (!saving.current && Date.now() >= retryAfter.current) void save(false).catch(() => {});
+    }, 900);
     return () => clearTimeout(timer);
-  }, [draft]);
+  }, [draft, draftReady]);
+  useEffect(() => {
+    const retry = () => {
+      if (draftReady && dirty.current && !saving.current && !retryBlocked.current && Date.now() >= retryAfter.current)
+        void save(false).catch(() => {});
+    };
+    // Continuous drawing must not postpone autosave indefinitely.
+    const interval = setInterval(retry, 3000);
+    const online = () => { retryAfter.current = 0; retry(); };
+    window.addEventListener("online", online);
+    return () => { clearInterval(interval); window.removeEventListener("online", online); };
+  }, [draftReady]);
   useEffect(() => {
     onSaveReady?.(async () => {
       await uploadTail.current;
       await save();
     });
     const before = (e: BeforeUnloadEvent) => {
-      if (dirty.current) e.preventDefault();
+      sheetRef.current?.flush();
+      void draftWriter.current!.flush().catch(() => {});
+      if (dirty.current) { e.preventDefault(); e.returnValue = ""; }
     };
     window.addEventListener("beforeunload", before);
     return () => {
@@ -264,6 +349,9 @@ export default function NoteView({
             group: edited.group,
             parentId: edited.parentId,
             canvas: edited.canvas,
+            pages: edited.pages,
+            paperTexture: edited.paperTexture,
+            aiNotes: edited.aiNotes,
             noteDate: edited.noteDate,
             fileName: edited.fileName,
             theme: edited.theme,
@@ -273,6 +361,7 @@ export default function NoteView({
     };
     setDraft(latest.current);
     dirty.current = !!edited;
+    if (edited) draftWriter.current!.stage(latest.current);
     onDirty(!!edited);
     setSaveStatus(edited ? "Unsaved changes" : "Saved locally");
   }
@@ -374,6 +463,7 @@ export default function NoteView({
   );
   const lastReview = data.reviews.find((r) => r.noteId === draft.id);
   const currentSources = data.sources.filter((s) => noteUsesResource(draft, s));
+  if (!draftReady) return <div role="status" className="note-page">Opening notebook...</div>;
   return (
     <div className={"note-workspace " + (!connections ? "focus-mode" : "")}>
       <article className="note-page">
@@ -470,6 +560,19 @@ export default function NoteView({
           </div>
         </header>
         <div className="note-content">
+          {backupError && <div className="coverage" role="alert">{backupError}</div>}
+          {saveError && <div className="coverage" role="alert">
+            <span>{saveError}</span>
+            <button onClick={() => void save().catch(() => {})}>Retry saving</button>
+            <button onClick={() => {
+              const url = URL.createObjectURL(new Blob([JSON.stringify(latest.current, null, 2)], { type: "application/json" }));
+              const anchor = document.createElement("a");
+              anchor.href = url;
+              anchor.download = latest.current.title.replace(/[^a-z0-9 ]/gi, "") + " draft.json";
+              anchor.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }}>Keep a draft copy</button>
+          </div>}
           {!data.notes.some((n) => n.id === draft.id) && (
             <div className="coverage" role="alert">
               This note was deleted from the vault. Your unsaved draft is still
@@ -678,31 +781,42 @@ export default function NoteView({
                 Diagram ready for review <ChevronRight size={14} />
               </button>
             ))}
-          <NotebookSheet
+          <PagedNotebook
             ref={sheetRef}
-            value={draft.canvas}
-            onChange={(canvas) => edit({ canvas })}
+            navigationStart={
+              <div className="sheet-focus-navigation">
+                {onLibrary && <button aria-label="Back to all notes" title="All notes" onClick={() => action("navigate", async () => onLibrary())}><ArrowLeft size={17} /></button>}
+                {draft.parentId && data.notes.some((n) => n.id === draft.parentId) && <button aria-label="Open parent note" title={data.notes.find((n) => n.id === draft.parentId)?.title} onClick={() => action("navigate", async () => onOpen(data.notes.find((n) => n.id === draft.parentId)!))}><ArrowUp size={17} /></button>}
+                <span className="sheet-focus-title" title={draft.title}>{draft.title}</span>
+              </div>
+            }
+            saveStatus={saveStatus}
+            note={draft}
+            onChange={edit}
+            save={save}
             onDrawing={setDrawing}
             onImage={() => command("image")}
             onCommand={command}
             onUpload={upload}
           >
-            <Editor
-              ref={editorRef}
-              value={draft.body || ""}
-              onChange={(body) => edit({ body })}
-              onCommand={command}
-              onUpload={upload}
-              onVideo={(url, label) => sheetRef.current?.video(url, label)}
-              onPlace={(kind, src, alt) =>
-                kind === "image"
-                  ? sheetRef.current?.image(src, alt || "Image")
-                  : kind === "drawing"
-                    ? sheetRef.current?.drawing(src)
-                    : sheetRef.current?.block(kind, src)
-              }
-            />
-          </NotebookSheet>
+            {(page, onBodyChange) => (
+              <Editor
+                ref={editorRef}
+                value={page.body}
+                onChange={onBodyChange}
+                onCommand={command}
+                onUpload={upload}
+                onVideo={(url, label) => sheetRef.current?.video(url, label)}
+                onPlace={(kind, src, alt) =>
+                  kind === "image"
+                    ? sheetRef.current?.image(src, alt || "Image")
+                    : kind === "drawing"
+                      ? sheetRef.current?.drawing(src)
+                      : sheetRef.current?.block(kind, src)
+                }
+              />
+            )}
+          </PagedNotebook>
           {drawing && (
             <Suspense fallback={<Busy />}>
               <Drawing
@@ -817,35 +931,41 @@ export default function NoteView({
               )}
             </details>
           </section>
-          <footer className="note-footer">
-            <button onClick={() => edit({ status: "explained" })}>
-              <Check size={13} />
-              Mark explained in my words
-            </button>
-            <button
-              onClick={() =>
-                action("history", async () => {
-                  setHistory(await api("/notes/" + draft.id + "/history"));
-                  setModal("history");
-                })
-              }
-            >
-              <History size={14} />
-              History
-            </button>
-            <a
-              className="button"
-              href={"/api/notes/" + draft.id + "/export"}
-              download
-            >
-              <Download size={14} />
-              Markdown
-            </a>
-            <button className="danger-text" onClick={() => setModal("archive")}>
-              <Trash2 size={14} />
-              Delete
-            </button>
-          </footer>
+          <details className="note-page-actions">
+            <summary>Page actions</summary>
+            <footer className="note-footer">
+              <button onClick={() => edit({ status: "explained" })}>
+                <Check size={13} />
+                Mark explained in my words
+              </button>
+              <button
+                onClick={() =>
+                  action("history", async () => {
+                    setHistory(await api("/notes/" + draft.id + "/history"));
+                    setModal("history");
+                  })
+                }
+              >
+                <History size={14} />
+                History
+              </button>
+              <a
+                className="button"
+                href={"/api/notes/" + draft.id + "/export"}
+                download
+              >
+                <Download size={14} />
+                Markdown
+              </a>
+              <button
+                className="danger-text"
+                onClick={() => setModal("archive")}
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </footer>
+          </details>
         </div>
       </article>
       {connections && (
@@ -1078,6 +1198,7 @@ export default function NoteView({
                     title: draft.title + " (recovered draft)",
                   });
                   dirty.current = false;
+                  void draftWriter.current!.discard().catch(error => setBackupError(error.message));
                   onDirty(false);
                   await refresh();
                   setModal("");
@@ -1095,6 +1216,9 @@ export default function NoteView({
                 latest.current = conflict;
                 setDraft(conflict);
                 dirty.current = false;
+                retryBlocked.current = false;
+                setSaveError("");
+                void draftWriter.current!.discard().catch(error => setBackupError(error.message));
                 onDirty(false);
                 setSaveStatus("Saved locally");
                 setModal("");
@@ -1110,6 +1234,8 @@ export default function NoteView({
                   revision: conflict.revision,
                   etag: conflict.etag,
                 };
+                retryBlocked.current = false;
+                draftWriter.current!.stage(latest.current);
                 setDraft(latest.current);
                 dirty.current = true;
                 setSaveStatus("Unsaved changes");

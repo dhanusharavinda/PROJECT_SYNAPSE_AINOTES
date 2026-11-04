@@ -1,6 +1,7 @@
 import { bodyOf } from "./content";
 import { readableText } from "./studyText";
 import type { Note } from "./types";
+import { notebookPages, noteDrawingItems } from "./notebookModel";
 
 export interface RecallUnit {
   id: string;
@@ -32,7 +33,11 @@ export function practiceText(source: string) {
 }
 // Keep the same bounded source units in the prompt, evidence validator and UI.
 export function recallUnits(note: Note): RecallUnit[] {
-  const blocks = practiceText(bodyOf(note))
+  const blocks = practiceText(
+    notebookPages(note)
+      .flatMap((p) => [p.body, p.aiNotes?.text || ""])
+      .join("\n\n"),
+  )
     .split(/\n\s*\n/)
     .filter((s) => s.trim());
   const units: RecallUnit[] = blocks.map((text, i) => ({
@@ -40,7 +45,7 @@ export function recallUnits(note: Note): RecallUnit[] {
     label: `Passage ${i + 1}`,
     text: text.trim().slice(0, 1800),
   }));
-  for (const item of note.canvas?.items || []) {
+  for (const item of noteDrawingItems(note)) {
     if (!["text", "table"].includes(item.kind) && !item.uncertain) continue;
     const text = practiceText(item.text || "");
     if (text || item.uncertain)
