@@ -535,7 +535,7 @@ export default function NoteView({
               Practice
             </button>
             <button
-              title="Export slides for LinkedIn"
+              title="Export PDF"
               onClick={() =>
                 void save()
                   .then(() => setSlidesOpen(true))
@@ -543,7 +543,7 @@ export default function NoteView({
               }
             >
               <Download size={14} />
-              Slides
+              PDF
             </button>
             <button
               className="icon"
@@ -1514,6 +1514,7 @@ export default function NoteView({
       )}
       {modal === "share" && (
         <Modal title="Share" onClose={() => setModal("")}>
+          <button onClick={() => { sheetRef.current?.flush(); setModal(""); setSlidesOpen(true); }}>Export PDF</button>
           <Collaborators
             note={draft}
             notify={notify}
@@ -1526,7 +1527,7 @@ export default function NoteView({
         </Modal>
       )}
       {slidesOpen && (
-        <SlidesExport notes={[draft]} onClose={() => setSlidesOpen(false)} />
+        <SlidesExport availableNotes={data.notes} notes={[draft]} onClose={() => setSlidesOpen(false)} />
       )}
       {modal === "history" && (
         <Modal title="Local version history" wide onClose={() => setModal("")}>

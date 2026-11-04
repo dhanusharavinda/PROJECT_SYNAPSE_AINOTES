@@ -14,10 +14,12 @@ export default function CanvasRead({
   canvas,
   share,
   children,
+  exporting = false,
 }: {
   canvas: NoteCanvas;
   share?: string;
   children?: ReactNode;
+  exporting?: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null),
     page = useRef<HTMLDivElement>(null),
@@ -62,8 +64,8 @@ export default function CanvasRead({
               canvas.prose
                 ? {
                     width: canvas.prose.width,
-                    height: canvas.prose.height,
-                    overflow: "auto",
+                    height: exporting ? undefined : canvas.prose.height,
+                    overflow: exporting ? "visible" : "auto",
                   }
                 : undefined
             }
@@ -80,7 +82,9 @@ export default function CanvasRead({
                 ? fileUrl("drawings", item.drawingId + ".svg", share)
                 : attachment
                   ? fileUrl(attachment[1], attachment[2], share)
-                  : "";
+                  : /^(https?:|blob:|data:image\/)/i.test(item.src || "")
+                    ? item.src
+                    : "";
           return (
             <div
               key={item.id}

@@ -766,7 +766,7 @@ export default function SharedNotebook({
                   .catch(() => {})
               }
             >
-              Slides
+              PDF
             </button>
           </div>
         </details>

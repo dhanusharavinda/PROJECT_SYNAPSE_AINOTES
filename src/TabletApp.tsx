@@ -1,3 +1,4 @@
+import SlidesExport from "./SlidesExport";
 import DiagramComposer from "./DiagramComposer";
 import { ArrowLeft, ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -41,6 +42,7 @@ type Connection = {
 const mediaCache = "synapse-media-v1";
 class SyncError extends Error {}
 export default function TabletApp({ study = false }: { study?: boolean }) {
+  const [pdfOpen, setPdfOpen] = useState(false);
   const studyMedia = useRef<Record<string, string>>({});
   const [, refreshMedia] = useState(0);
   useEffect(
@@ -795,6 +797,7 @@ export default function TabletApp({ study = false }: { study?: boolean }) {
     <main className={`tablet-app${writer ? "" : " tablet-readonly"}`}>
       <header>
         <strong>Synapse</strong>
+        {row && <button onClick={() => { sheet.current?.flush(); void tail.current.then(() => setPdfOpen(true)); }}>Export PDF</button>}
         <span role="status">{status}</span>
         <button
           onClick={() => void create().catch(fail)}
@@ -811,6 +814,7 @@ export default function TabletApp({ study = false }: { study?: boolean }) {
           </button>
         )}
       </header>
+      {pdfOpen && row && <SlidesExport notes={[row.note]} availableNotes={pages.map(p => p.note)} onClose={() => setPdfOpen(false)} />}
       {error && (
         <div className="tablet-error" role="alert">
           {error}
